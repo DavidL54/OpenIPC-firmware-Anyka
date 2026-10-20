@@ -1,0 +1,63 @@
+package core
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/hex"
+	"sync"
+)
+
+// The SDK leaves parameter sets out of SDP. Keep only two small NAL units,
+// owned by the receiver, so later clients can describe an already-live stream.
+type anykaH264Parameters struct {
+	mu        sync.Mutex
+	sets      [2][]byte
+	fmtp      string
+	ready     chan struct{}
+	announced bool
+}
+
+func (p *anykaH264Parameters) receive(payload []byte) {
+	if len(payload) == 0 || len(payload) > 256 {
+		return
+	}
+	kind := payload[0] & 31
+	if kind != 7 && kind != 8 {
+		return
+	}
+	if kind == 7 && len(payload) < 4 {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	i := kind - 7
+	if bytes.Equal(p.sets[i], payload) {
+		return
+	}
+	p.sets[i] = append(p.sets[i][:0], payload...)
+	if len(p.sets[0]) < 4 || len(p.sets[1]) == 0 {
+		return
+	}
+	p.fmtp = "packetization-mode=1;profile-level-id=" + hex.EncodeToString(p.sets[0][1:4]) +
+		";sprop-parameter-sets=" + base64.StdEncoding.EncodeToString(p.sets[0]) + "," + base64.StdEncoding.EncodeToString(p.sets[1])
+	if !p.announced {
+		close(p.ready)
+		p.announced = true
+	}
+}
+
+func (r *Receiver) H264ParametersReady() <-chan struct{} {
+	if r.anykaH264 == nil {
+		return nil
+	}
+	return r.anykaH264.ready
+}
+
+func (r *Receiver) H264Fmtp() string {
+	if r.anykaH264 == nil {
+		return ""
+	}
+	r.anykaH264.mu.Lock()
+	defer r.anykaH264.mu.Unlock()
+	return r.anykaH264.fmtp
+}

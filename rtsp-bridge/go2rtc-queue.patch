@@ -1,0 +1,14 @@
+--- a/pkg/core/track.go
++++ b/pkg/core/track.go
+@@ -81,8 +81,8 @@
+ 	if GetKind(codec.Name) == KindVideo {
+ 		if codec.IsRTP() {
+-			// in my tests 40Mbit/s 4K-video can generate up to 1500 items
+-			// for the h264.RTPDepay => RTPPay queue
+-			bufSize = 4096
++			// Bound retained RTP payloads on the Anyka 26 MiB userland.
++			// Overflow keeps the existing drop policy; validate decoder loss.
++			bufSize = 256
+ 		} else {
+ 			bufSize = 64
+ 		}

@@ -1,0 +1,1 @@
+!function(){function e(){const e=document.getElementById("txpower-range"),t=document.getElementById("txpower-show"),n=document.getElementById("txpower");e&&t&&n&&e.addEventListener("input",(function(){t.textContent=this.value,n.value=this.value}))}"loading"!==document.readyState?e():document.addEventListener("DOMContentLoaded",e)}();

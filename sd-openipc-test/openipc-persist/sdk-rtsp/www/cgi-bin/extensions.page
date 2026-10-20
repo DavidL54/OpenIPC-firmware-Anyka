@@ -1,0 +1,18 @@
+#!/media/usr/bin/haserl
+<%in p/common.cgi %>
+<% page_title="Extensions" %>
+<%in p/header.cgi %>
+<table class="table align-middle">
+ <thead><tr><th>Extension</th><th>Status</th><th>Backend</th></tr></thead>
+ <tbody>
+  <tr><td>Browser Preview</td><td>Installed</td><td>go2rtc ARMv5 / H.264 MSE</td></tr>
+  <tr><td><a href="ntfy.cgi">Ntfy</a></td><td>Manual text notifications</td><td>HTTPS</td></tr>
+  <tr><td>OpenWall</td><td>Unavailable</td><td>Requires a verified JPEG snapshot backend</td></tr>
+  <tr><td>Telegram snapshots / clips</td><td>Unavailable</td><td>Requires snapshots / recording hooks</td></tr>
+  <tr><td>WireGuard / VTun</td><td>Unavailable</td><td>Kernel / userspace tunnel support not validated</td></tr>
+  <tr><td>SOCKS proxy</td><td>Unavailable</td><td>No validated proxy service</td></tr>
+  <tr><td><a href="camera.cgi?tab=image">Motion detection</a></td><td>Installed</td><td>Anyka ISP / SDK motion regions; Home Assistant binary sensor</td></tr>
+  <tr><td>Recording</td><td>Unavailable</td><td>No recording backend</td></tr>
+ </tbody>
+</table>
+<%in p/footer.cgi %>

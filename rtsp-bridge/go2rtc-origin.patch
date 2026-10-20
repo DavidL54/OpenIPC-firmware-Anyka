@@ -1,0 +1,13 @@
+--- a/internal/api/ws/ws.go
++++ b/internal/api/ws/ws.go
+@@ -80,8 +80,9 @@
+ 			o, err := url.Parse(origin[0])
+ 			if err != nil {
+ 				return false
+ 			}
+-			if o.Host == r.Host {
++			host, err := url.Parse("//" + r.Host)
++			if err == nil && o.Hostname() == host.Hostname() {
+ 				return true
+ 			}
+ 			log.Trace().Msgf("[api] ws origin=%s, host=%s", o.Host, r.Host)

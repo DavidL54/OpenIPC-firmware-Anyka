@@ -1,0 +1,122 @@
+--- a/pkg/rtsp/server.go
++++ b/pkg/rtsp/server.go
+@@ -14,6 +14,9 @@
+ 
+ var FailedAuth = errors.New("failed authentication")
+ 
++var ServerAuthenticator func(*tcp.Request, net.Conn) *tcp.Response
++var ServerClosed func(net.Conn)
++
+ func NewServer(conn net.Conn) *Conn {
+ 	return &Conn{
+ 		Connection: core.Connection{
+@@ -46,6 +49,19 @@
+ 
+ 		c.Fire(req)
+ 
++		if ServerAuthenticator != nil {
++			if res := ServerAuthenticator(req, c.conn); res != nil {
++				res.Request = req
++				if err = c.WriteResponse(res); err != nil {
++					return err
++				}
++				if req.Header.Get("Authorization") != "" || res.Status != "401 Unauthorized" {
++					return FailedAuth
++				}
++				continue
++			}
++		}
++
+ 		if valid, empty := c.auth.Validate(req); !valid {
+ 			res := &tcp.Response{
+ 				Status:  "401 Unauthorized",
+--- a/internal/rtsp/rtsp.go
++++ b/internal/rtsp/rtsp.go
+@@ -64,6 +64,7 @@
+ 	}
+ 
+ 	go func() {
++		slots := make(chan struct{}, 2)
+ 		for {
+ 			conn, err := ln.Accept()
+ 			if err != nil {
+@@ -71,6 +72,12 @@
+ 				return
+ 			}
+ 
++			select {
++			case slots <- struct{}{}:
++			default:
++				_ = conn.Close()
++				continue
++			}
+ 			c := rtsp.NewServer(conn)
+ 			c.PacketSize = conf.Mod.PacketSize
+ 			// skip check auth for localhost
+@@ -78,7 +85,16 @@
+ 			if conf.Mod.Username != "" && !conn.RemoteAddr().(*net.TCPAddr).IP.IsLoopback() {
+ 				c.Auth(conf.Mod.Username, conf.Mod.Password)
+ 			}
+-			go tcpHandler(c)
++			go func() {
++				defer func() {
++					_ = conn.Close()
++					if rtsp.ServerClosed != nil {
++						rtsp.ServerClosed(conn)
++					}
++					<-slots
++				}()
++				tcpHandler(c)
++			}()
+ 		}
+ 	}()
+ }
+
+# End of patch
+--- a/pkg/tcp/textproto.go
++++ b/pkg/tcp/textproto.go
+@@ -2,6 +2,7 @@
+ 
+ import (
+ 	"bufio"
++	"bytes"
+ 	"errors"
+ 	"fmt"
+ 	"io"
+@@ -110,7 +111,21 @@
+ }
+ 
+ func ReadRequest(r *bufio.Reader) (*Request, error) {
+-	tp := textproto.NewReader(r)
++	header := make([]byte, 0, 1024)
++	for {
++		line, err := r.ReadSlice('\n')
++		if err != nil {
++			return nil, err
++		}
++		if len(header)+len(line) > 8192 {
++			return nil, errors.New("RTSP request headers too large")
++		}
++		header = append(header, line...)
++		if bytes.Equal(line, []byte("\r\n")) || bytes.Equal(line, []byte("\n")) {
++			break
++		}
++	}
++	tp := textproto.NewReader(bufio.NewReader(bytes.NewReader(header)))
+ 
+ 	line, err := tp.ReadLine()
+ 	if err != nil {
+@@ -138,11 +153,8 @@
+ 	}
+ 
+ 	if val := req.Header.Get("Content-Length"); val != "" {
+-		var i int
+-		i, err = strconv.Atoi(val)
+-		req.Body = make([]byte, i)
+-		if _, err = io.ReadAtLeast(r, req.Body, i); err != nil {
+-			return nil, err
++		if val != "0" {
++			return nil, errors.New("RTSP request bodies disabled")
+ 		}
+ 	}
+ 

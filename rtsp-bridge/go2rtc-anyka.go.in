@@ -1,0 +1,1111 @@
+//go:build ignore
+
+package main
+
+import (
+	"context"
+	"crypto/md5"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/textproto"
+	"net/url"
+	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/AlexxIT/go2rtc/internal/api"
+	"github.com/AlexxIT/go2rtc/internal/api/ws"
+	"github.com/AlexxIT/go2rtc/internal/app"
+	"github.com/AlexxIT/go2rtc/internal/mp4"
+	"github.com/AlexxIT/go2rtc/internal/rtsp"
+	"github.com/AlexxIT/go2rtc/internal/streams"
+	mediaRTSP "github.com/AlexxIT/go2rtc/pkg/rtsp"
+	"github.com/AlexxIT/go2rtc/pkg/shell"
+	"github.com/AlexxIT/go2rtc/pkg/tcp"
+	mediaAuth "github.com/abbot/go-http-auth"
+	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/bcrypt"
+)
+
+const mediaRealm = "IP Camera(AC813)"
+const mediaSecretPath = "/conf/anyka-private/rtsp-ha1"
+const privacyPath = "/tmp/anyka-privacy-mode"
+const defaultPrivacyAssets = "/mnt/openipc-persist/sdk-rtsp"
+
+type webAccess struct {
+	PasswordHash string `json:"password_hash"`
+	DigestHA1    string `json:"digest_ha1,omitempty"`
+}
+
+type webGateway struct {
+	mu               sync.Mutex
+	mediaMu          sync.Mutex
+	audioMu          sync.Mutex
+	audioCancel      context.CancelFunc
+	mediaAuth        *mediaAuth.DigestAuth
+	mediaEpoch       time.Time
+	mediaPeers       map[net.Conn]struct{}
+	privacy          bool
+	privacyAssets    string
+	previewCancel    map[uint64]context.CancelFunc
+	nextPreviewID    uint64
+	access           webAccess
+	accessFile       string
+	sessions         map[string]time.Time
+	attempts         int
+	attemptWindow    time.Time
+	lastNotification time.Time
+	bootstrapIP      string
+	web              *httputil.ReverseProxy
+	video            *httputil.ReverseProxy
+	pages            map[string][]byte
+	uiDisabled       bool
+}
+
+func envDefault(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func (gateway *webGateway) privacyAsset(name string) string {
+	if gateway.privacyAssets == "" {
+		return filepath.Join(defaultPrivacyAssets, name)
+	}
+	return filepath.Join(gateway.privacyAssets, name)
+}
+
+func (gateway *webGateway) privacyAssetsReady() bool {
+	for _, name := range []string{"privacy-slate-vs0.h264", "privacy-slate-vs1.h264", "privacy-slate.jpg"} {
+		info, err := os.Stat(gateway.privacyAsset(name))
+		if err != nil || !info.Mode().IsRegular() || info.Size() < 5 || info.Size() > 512*1024 {
+			return false
+		}
+	}
+	return true
+}
+
+func savePrivate(path string, value any) (retErr error) {
+	path = filepath.Clean(path)
+	if strings.HasPrefix(path, "/mnt/") {
+		if err := exec.Command("/bin/mount", "-o", "remount,rw", "/mnt").Run(); err != nil {
+			return err
+		}
+		defer func() {
+			syscall.Sync()
+			if err := exec.Command("/bin/mount", "-o", "remount,ro", "/mnt").Run(); err != nil {
+				retErr = err
+			}
+		}()
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	if err = os.WriteFile(path+".new", data, 0600); err != nil {
+		return err
+	}
+	defer os.Remove(path + ".new")
+	return os.Rename(path+".new", path)
+}
+
+func (gateway *webGateway) authorized(request *http.Request) bool {
+	cookie, err := request.Cookie("anyka_session")
+	if err != nil {
+		return false
+	}
+	expires, found := gateway.sessions[cookie.Value]
+	return found && time.Now().Before(expires)
+}
+
+func validMediaSecret(secret string) bool {
+	decoded, err := hex.DecodeString(secret)
+	return err == nil && len(decoded) == 16 && hex.EncodeToString(decoded) == secret
+}
+
+func (gateway *webGateway) mediaSecret(username, realm string) string {
+	gateway.mu.Lock()
+	defer gateway.mu.Unlock()
+	if username != "admin" || realm != mediaRealm {
+		return ""
+	}
+	return gateway.access.DigestHA1
+}
+
+func (gateway *webGateway) snapshotAccess(writer http.ResponseWriter, request *http.Request) bool {
+	gateway.mediaMu.Lock()
+	defer gateway.mediaMu.Unlock()
+	if gateway.mediaAuth == nil || time.Since(gateway.mediaEpoch) > 5*time.Minute {
+		gateway.mediaAuth = mediaAuth.NewDigestAuthenticator(mediaRealm, gateway.mediaSecret)
+		gateway.mediaAuth.ClientCacheSize = 32
+		gateway.mediaAuth.ClientCacheTolerance = 8
+		gateway.mediaEpoch = time.Now()
+	}
+	params := mediaAuth.DigestAuthParams(request.Header.Get("Authorization"))
+	gateway.mu.Lock()
+	if time.Since(gateway.attemptWindow) > time.Minute {
+		gateway.attemptWindow = time.Now()
+		gateway.attempts = 0
+	}
+	blocked := gateway.attempts >= 5
+	ready := gateway.access.PasswordHash != "" && validMediaSecret(gateway.access.DigestHA1)
+	gateway.mu.Unlock()
+	if blocked {
+		writer.Header().Set("Retry-After", "60")
+		http.Error(writer, "Too many attempts", 429)
+		return false
+	}
+	if ready && params != nil && params["uri"] == request.RequestURI {
+		username, info := gateway.mediaAuth.CheckAuth(request)
+		if username == "admin" {
+			if info != nil {
+				writer.Header().Set("Authentication-Info", *info)
+			}
+			return true
+		}
+	}
+	if request.Header.Get("Authorization") != "" {
+		gateway.mu.Lock()
+		gateway.attempts++
+		gateway.mu.Unlock()
+	}
+	gateway.mediaAuth.RequireAuth(writer, request)
+	return false
+}
+
+type mediaResponse struct {
+	header http.Header
+	status int
+}
+
+func (response *mediaResponse) Header() http.Header            { return response.header }
+func (response *mediaResponse) WriteHeader(status int)         { response.status = status }
+func (response *mediaResponse) Write(data []byte) (int, error) { return len(data), nil }
+
+func (gateway *webGateway) rtspAccess(request *tcp.Request, connection net.Conn) *tcp.Response {
+	gateway.mu.Lock()
+	secret := gateway.access.DigestHA1
+	gateway.mu.Unlock()
+	writer := &mediaResponse{header: make(http.Header), status: 200}
+	mediaRequest := &http.Request{Method: request.Method, URL: request.URL,
+		Header: http.Header(request.Header), RequestURI: request.URL.String(), RemoteAddr: connection.RemoteAddr().String()}
+	if !gateway.snapshotAccess(writer, mediaRequest) {
+		return &tcp.Response{Status: strconv.Itoa(writer.status) + " " + http.StatusText(writer.status), Header: textproto.MIMEHeader(writer.header)}
+	}
+	switch request.Method {
+	case "OPTIONS", "DESCRIBE", "SETUP", "PLAY", "TEARDOWN":
+	default:
+		return &tcp.Response{Status: "405 Method Not Allowed"}
+	}
+	allowed := request.URL.Path == "/vs0" || request.URL.Path == "/vs1" ||
+		(os.Getenv("ANYKA_NATIVE_RTSP") == "1" && (request.URL.Path == "/vs0/" || request.URL.Path == "/vs1/")) ||
+		request.URL.Path == "/vs0/trackID=0" || request.URL.Path == "/vs1/trackID=0" ||
+		request.URL.Path == "/vs0/trackID=1" || request.URL.Path == "/vs1/trackID=1"
+	if !allowed || request.URL.RawQuery != "" || request.URL.EscapedPath() != request.URL.Path {
+		return &tcp.Response{Status: "404 Not Found"}
+	}
+	gateway.mu.Lock()
+	if gateway.privacy && os.Getenv("ANYKA_NATIVE_RTSP") != "1" {
+		gateway.mu.Unlock()
+		return &tcp.Response{Status: "503 Service Unavailable"}
+	}
+	if secret == "" || gateway.access.DigestHA1 != secret {
+		gateway.mu.Unlock()
+		return &tcp.Response{Status: "403 Forbidden"}
+	}
+	if gateway.mediaPeers == nil {
+		gateway.mediaPeers = make(map[net.Conn]struct{})
+	}
+	gateway.mediaPeers[connection] = struct{}{}
+	gateway.mu.Unlock()
+	return nil
+}
+
+// Privacy is RAM-only: rebooting the camera restores normal operation. The
+// file is also read by the SDK motion monitor, while this gateway revokes all
+// already connected public media readers and active speaker playback.
+func (gateway *webGateway) privacyHTTP(writer http.ResponseWriter, request *http.Request) {
+	if request.URL.RawQuery != "" {
+		http.Error(writer, "Unexpected query", http.StatusBadRequest)
+		return
+	}
+	if request.Method == http.MethodGet {
+		gateway.mu.Lock()
+		enabled := gateway.privacy
+		gateway.mu.Unlock()
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]bool{"enabled": enabled})
+		return
+	}
+	if request.Method != http.MethodPost {
+		http.Error(writer, "Use GET or POST", http.StatusMethodNotAllowed)
+		return
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, 128)
+	var input struct { Enabled *bool `json:"enabled"` }
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&input) != nil || input.Enabled == nil || decoder.Decode(new(any)) != io.EOF {
+		http.Error(writer, "Expected one enabled boolean", http.StatusBadRequest)
+		return
+	}
+	gateway.mu.Lock()
+	if *input.Enabled != gateway.privacy {
+		if *input.Enabled {
+			if os.Getenv("ANYKA_NATIVE_RTSP") == "1" && !gateway.privacyAssetsReady() {
+				gateway.mu.Unlock()
+				http.Error(writer, "Privacy slate unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			file, err := os.OpenFile(privacyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if err == nil { err = file.Close() }
+			if err != nil {
+				gateway.mu.Unlock()
+				http.Error(writer, "Cannot enable privacy mode", http.StatusServiceUnavailable)
+				return
+			}
+		} else if err := os.Remove(privacyPath); err != nil {
+			gateway.mu.Unlock()
+			http.Error(writer, "Cannot disable privacy mode", http.StatusServiceUnavailable)
+			return
+		}
+		gateway.privacy = *input.Enabled
+	}
+	var peers []net.Conn
+	var previews []context.CancelFunc
+	var audio context.CancelFunc
+	if gateway.privacy {
+		if os.Getenv("ANYKA_NATIVE_RTSP") != "1" {
+			for peer := range gateway.mediaPeers { peers = append(peers, peer) }
+		}
+		for _, cancel := range gateway.previewCancel { previews = append(previews, cancel) }
+		audio = gateway.audioCancel
+	}
+	enabled := gateway.privacy
+	gateway.mu.Unlock()
+	if enabled {
+		for _, cancel := range previews { cancel() }
+		for _, peer := range peers { _ = peer.Close() }
+		if audio != nil { audio() }
+		_ = os.Remove("/tmp/anyka-snapshot.jpg")
+		if os.Getenv("ANYKA_NATIVE_RTSP") == "1" {
+			// Native media polls the RAM marker every five milliseconds.
+			// Do not acknowledge the switch before existing peers use the slate.
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(writer).Encode(map[string]bool{"enabled": enabled})
+}
+
+func (gateway *webGateway) accessPost(writer http.ResponseWriter, request *http.Request) {
+	_ = http.NewResponseController(writer).SetReadDeadline(time.Now().Add(5 * time.Second))
+	request.Body = http.MaxBytesReader(writer, request.Body, 2048)
+	if request.ParseForm() != nil {
+		http.Error(writer, "Invalid form", 400)
+		return
+	}
+	password := request.PostForm.Get("password_default")
+	if request.PostForm.Get("ui_username") != "admin" {
+		http.Error(writer, "Invalid username", 400)
+		return
+	}
+	switch request.PostForm.Get("action") {
+	case "password", "login":
+	default:
+		http.Error(writer, "Unknown action", 400)
+		return
+	}
+	configured := gateway.access.PasswordHash != ""
+	setting := request.PostForm.Get("action") == "password"
+	if setting {
+		if configured && !gateway.authorized(request) {
+			http.Error(writer, "Unauthorized", 401)
+			return
+		}
+		if len(password) < 12 || len(password) > 72 || password != request.PostForm.Get("password_confirm") {
+			http.Redirect(writer, request, "/cgi-bin/access.cgi?error=password", 303)
+			return
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), 8)
+		if err != nil {
+			http.Error(writer, "Password unavailable", 500)
+			return
+		}
+		digest := md5.Sum([]byte("admin:" + mediaRealm + ":" + password))
+		access := webAccess{PasswordHash: string(hash), DigestHA1: hex.EncodeToString(digest[:])}
+		if savePrivate(gateway.accessFile, access) != nil {
+			http.Error(writer, "Cannot save private configuration", 500)
+			return
+		}
+		gateway.access = access
+		clear(gateway.sessions)
+		for connection := range gateway.mediaPeers {
+			go connection.Close()
+		}
+	} else {
+		if !configured {
+			http.Error(writer, "Set an administrator password first", 403)
+			return
+		}
+		if time.Since(gateway.attemptWindow) > time.Minute {
+			gateway.attemptWindow = time.Now()
+			gateway.attempts = 0
+		}
+		if gateway.attempts >= 5 {
+			writer.Header().Set("Retry-After", "60")
+			http.Error(writer, "Too many attempts", 429)
+			return
+		}
+		if len(password) > 72 || bcrypt.CompareHashAndPassword([]byte(gateway.access.PasswordHash), []byte(password)) != nil {
+			gateway.attempts++
+			http.Redirect(writer, request, "/cgi-bin/access.cgi?error=login", 303)
+			return
+		}
+		digest := md5.Sum([]byte("admin:" + mediaRealm + ":" + password))
+		secret := hex.EncodeToString(digest[:])
+		if gateway.access.DigestHA1 != secret {
+			access := gateway.access
+			access.DigestHA1 = secret
+			if savePrivate(gateway.accessFile, access) != nil {
+				http.Error(writer, "Cannot configure media access", 500)
+				return
+			}
+			gateway.access = access
+			for connection := range gateway.mediaPeers {
+				go connection.Close()
+			}
+		}
+	}
+	token := make([]byte, 32)
+	if _, err := rand.Read(token); err != nil {
+		http.Error(writer, "Session unavailable", 500)
+		return
+	}
+	for key, expires := range gateway.sessions {
+		if time.Now().After(expires) {
+			delete(gateway.sessions, key)
+		}
+	}
+	if len(gateway.sessions) >= 8 {
+		clear(gateway.sessions)
+	}
+	session := hex.EncodeToString(token)
+	gateway.sessions[session] = time.Now().Add(8 * time.Hour)
+	http.SetCookie(writer, &http.Cookie{Name: "anyka_session", Value: session, Path: "/", HttpOnly: true, Secure: request.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: 28800})
+	http.Redirect(writer, request, "/cgi-bin/dashboard.cgi", 303)
+}
+
+func notificationPost(writer http.ResponseWriter, request *http.Request) {
+	_ = http.NewResponseController(writer).SetReadDeadline(time.Now().Add(5 * time.Second))
+	request.Body = http.MaxBytesReader(writer, request.Body, 4096)
+	if request.ParseForm() != nil {
+		http.Error(writer, "Invalid form", 400)
+		return
+	}
+	server, err := url.Parse(request.PostForm.Get("server"))
+	topic := request.PostForm.Get("topic")
+	token := request.PostForm.Get("token")
+	message := request.PostForm.Get("message")
+	if err != nil || server.Scheme != "https" || server.Hostname() == "" || server.User != nil || server.RawQuery != "" || server.Fragment != "" || (server.Path != "" && server.Path != "/") {
+		http.Error(writer, "Use an HTTPS server origin", 400)
+		return
+	}
+	if len(topic) < 3 || len(topic) > 120 || strings.Trim(topic, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" || len(token) > 512 || strings.ContainsAny(token, "\r\n") || len(message) < 1 || len(message) > 1024 {
+		http.Error(writer, "Invalid topic, token or message", 400)
+		return
+	}
+	server.Path = "/" + topic
+	outgoing, err := http.NewRequestWithContext(request.Context(), "POST", server.String(), strings.NewReader(message))
+	if err != nil {
+		http.Error(writer, "Invalid destination", 400)
+		return
+	}
+	outgoing.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	if token != "" {
+		outgoing.Header.Set("Authorization", "Bearer "+token)
+	}
+	transport := &http.Transport{MaxConnsPerHost: 1, DisableKeepAlives: true, TLSHandshakeTimeout: 5 * time.Second}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Timeout: 10 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Do(outgoing)
+	if err != nil {
+		http.Error(writer, "HTTPS delivery failed; check the camera clock, DNS and CA certificates", 502)
+		return
+	}
+	defer response.Body.Close()
+	_, _ = io.CopyN(io.Discard, response.Body, 1024)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		http.Error(writer, "Notification server rejected the message", 502)
+		return
+	}
+	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = writer.Write([]byte("Sent"))
+}
+
+func timePost(writer http.ResponseWriter, request *http.Request) {
+	_ = http.NewResponseController(writer).SetReadDeadline(time.Now().Add(5 * time.Second))
+	request.Body = http.MaxBytesReader(writer, request.Body, 128)
+	if request.ParseForm() != nil {
+		http.Error(writer, "Invalid form", 400)
+		return
+	}
+	seconds, err := strconv.ParseInt(request.PostForm.Get("seconds"), 10, 64)
+	if err != nil || seconds < 1700000000 || seconds > 2147483647 {
+		http.Error(writer, "Invalid timestamp", 400)
+		return
+	}
+	err = exec.Command("/media/lib/ld-musl-arm.so.1", "--library-path", "/media/lib:/media/usr/lib", "/media/bin/busybox", "date", "-s", "@"+strconv.FormatInt(seconds, 10)).Run()
+	if err != nil {
+		http.Error(writer, "Clock update failed", 500)
+		return
+	}
+	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = writer.Write([]byte("Clock updated"))
+}
+
+type audioPlaybackOutput struct {
+	data []byte
+}
+
+func (output *audioPlaybackOutput) Write(data []byte) (int, error) {
+	remaining := 32768 - len(output.data)
+	if remaining > 0 {
+		output.data = append(output.data, data[:min(len(data), remaining)]...)
+	}
+	return len(data), nil
+}
+
+func speakerMemoryAvailable() bool {
+	memory, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(memory), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 3 && fields[0] == "MemAvailable:" && fields[2] == "kB" {
+			available, err := strconv.ParseInt(fields[1], 10, 64)
+			/* The 64 MiB target normally has 5.5--6 MiB available while
+			 * the SDK encoder and preview relay are idle. Keep 1 MiB for
+			 * the short-lived audio helper without rejecting that range. */
+			return err == nil && available >= 4608
+		}
+	}
+	return false
+}
+
+func speakerPower(sdkDir string, enabled bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	action := "speaker-off"
+	if enabled {
+		action = "speaker-on"
+	}
+	command := exec.CommandContext(ctx, "/media/lib/ld-musl-arm.so.1", "--library-path", "/media/lib:/media/usr/lib", sdkDir+"/anyka-gpio", action)
+	command.Env = append(os.Environ(), "LD_PRELOAD=", "LD_LIBRARY_PATH=/media/lib:/media/usr/lib")
+	return command.Run()
+}
+
+func (gateway *webGateway) audioLive(writer http.ResponseWriter, request *http.Request) {
+    query, err := url.ParseQuery(request.URL.RawQuery)
+    volume, volumeErr := strconv.Atoi(query.Get("volume"))
+    rate, nr, mp3 := 8000, false, false
+    sourceRate, sourceChannels := 8000, 1
+    valid := err == nil && len(query) >= 1 && len(query) <= 6
+    for key, values := range query {
+        if len(values) != 1 { valid = false }
+        switch key {
+        case "volume":
+        case "rate":
+            if query.Get(key) != "8000" { valid = false }
+        case "source_rate":
+            sourceRate, err = strconv.Atoi(query.Get(key))
+            if err != nil || strconv.Itoa(sourceRate) != query.Get(key) || !(sourceRate == 8000 || sourceRate == 11025 || sourceRate == 12000 || sourceRate == 16000 || sourceRate == 22050 || sourceRate == 24000 || sourceRate == 32000 || sourceRate == 44100 || sourceRate == 48000) { valid = false }
+        case "source_channels":
+            sourceChannels, err = strconv.Atoi(query.Get(key))
+            if err != nil || (query.Get(key) != "1" && query.Get(key) != "2") { valid = false }
+        case "format":
+            if query.Get(key) == "mp3" { mp3 = true } else if query.Get(key) != "pcm" { valid = false }
+        case "nr":
+            if query.Get(key) == "1" { nr = true } else if query.Get(key) != "0" { valid = false }
+        default: valid = false
+        }
+    }
+    if mp3 && (query.Get("source_rate") == "" || query.Get("source_channels") == "") { valid = false }
+    if envDefault("ANYKA_NATIVE_RTSP", "0") != "1" && (rate != 8000 || nr || mp3) { valid = false }
+    if request.Method != "GET" || !valid || volumeErr != nil || volume < -30 || volume > 0 || query.Get("volume") != strconv.Itoa(volume) || request.Header.Get("Origin") != "http://"+request.Host {
+        http.Error(writer, "Valid same-origin audio options required", 403)
+        return
+    }
+
+	upgrader := websocket.Upgrader{
+		ReadBufferSize: 1024, WriteBufferSize: 1024,
+		CheckOrigin: func(originRequest *http.Request) bool {
+			return originRequest.Header.Get("Origin") == "http://"+originRequest.Host
+		},
+	}
+	connection, err := upgrader.Upgrade(writer, request, nil)
+	if err != nil {
+		return
+	}
+	defer connection.Close()
+	connection.SetReadLimit(1280)
+	report := func(kind, message string) {
+		_ = connection.SetWriteDeadline(time.Now().Add(time.Second))
+		_ = connection.WriteJSON(map[string]string{"type": kind, "value": message})
+	}
+	if !gateway.audioMu.TryLock() {
+		report("error", "Speaker is busy")
+		return
+	}
+	defer gateway.audioMu.Unlock()
+	gateway.mu.Lock()
+	private := gateway.privacy
+	gateway.mu.Unlock()
+	if private { report("error", "Camera privacy mode is enabled"); return }
+	debug.FreeOSMemory()
+	if !speakerMemoryAvailable() {
+		report("error", "Not enough free memory for live speaker playback; close other viewers")
+		return
+	}
+	if envDefault("ANYKA_NATIVE_RTSP", "0") == "1" {
+		gateway.nativeAudioLive(request, connection, volume, rate, nr, mp3, sourceRate, sourceChannels, report)
+		return
+	}
+	input, output, err := os.Pipe()
+	if err != nil {
+		report("error", "Cannot prepare speaker pipeline")
+		return
+	}
+	defer input.Close()
+	defer output.Close()
+	descriptor, err := output.SyscallConn()
+	var pipeErr syscall.Errno
+	if err == nil {
+		err = descriptor.Control(func(handle uintptr) {
+			_, _, pipeErr = syscall.Syscall(syscall.SYS_FCNTL, handle, syscall.F_SETPIPE_SZ, 4096)
+		})
+	}
+	if err != nil || pipeErr != 0 {
+		report("error", "Cannot bound speaker pipeline")
+		return
+	}
+	ctx, cancel := context.WithTimeout(request.Context(), 5*time.Minute)
+	defer cancel()
+	gateway.mu.Lock()
+	gateway.audioCancel = cancel
+	private = gateway.privacy
+	gateway.mu.Unlock()
+	if private { cancel() }
+	defer func() {
+		gateway.mu.Lock()
+		gateway.audioCancel = nil
+		gateway.mu.Unlock()
+	}()
+	sdkDir := filepath.Dir(envDefault("ANYKA_ACCESS_FILE", "/mnt/openipc-persist/web-access.json")) + "/sdk-rtsp"
+	defer func() {
+		if err := speakerPower(sdkDir, false); err != nil {
+			log.Print("Cannot mute speaker amplifier")
+		}
+	}()
+	if err = speakerPower(sdkDir, true); err != nil {
+		report("error", "Cannot enable speaker amplifier")
+		return
+	}
+	command := exec.CommandContext(ctx, sdkDir+"/anyka-audio-play", "-s", "8000", "-c", "1", "-d", "0", "-v", strconv.Itoa(volume), "-p", "/proc/self/fd/0")
+	command.Env = append(os.Environ(), "LD_LIBRARY_PATH="+sdkDir+"/lib", "LD_PRELOAD=")
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Cancel = func() error { return syscall.Kill(-command.Process.Pid, syscall.SIGKILL) }
+	command.WaitDelay = time.Second
+	command.Stdin = input
+	logs := &audioPlaybackOutput{}
+	command.Stdout, command.Stderr = logs, logs
+	if err = command.Start(); err != nil {
+		report("error", "Cannot start speaker")
+		return
+	}
+	_ = input.Close()
+	finished := make(chan error, 1)
+	go func() {
+		finished <- command.Wait()
+		_ = connection.Close()
+	}()
+	defer func() {
+		_ = output.Close()
+		timer := time.AfterFunc(time.Second, cancel)
+		defer timer.Stop()
+		<-finished
+	}()
+	stopClose := context.AfterFunc(ctx, func() {
+		_ = output.Close()
+		_ = connection.Close()
+	})
+	defer stopClose()
+	report("ready", "PCM mono 8000 Hz signed 16-bit little-endian")
+	started := time.Now()
+	var received int64
+	for {
+		_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+		kind, data, readErr := connection.ReadMessage()
+		if readErr != nil {
+			return
+		}
+		if kind == websocket.TextMessage && string(data) == "stop" {
+			return
+		}
+		gateway.mu.Lock()
+		authorized := gateway.authorized(request)
+		gateway.mu.Unlock()
+		if !authorized {
+			report("error", "Session expired")
+			return
+		}
+		if kind != websocket.BinaryMessage || len(data) == 0 || len(data)%2 != 0 {
+			report("error", "Invalid PCM packet")
+			return
+		}
+		received += int64(len(data))
+		if received > int64(time.Since(started))*16000/int64(time.Second)+4096 {
+			report("error", "Audio arrives faster than real time")
+			return
+		}
+		if err = output.SetWriteDeadline(time.Now().Add(time.Second)); err == nil {
+			_, err = output.Write(data)
+		}
+		if err != nil {
+			report("error", "Speaker pipeline stalled")
+			return
+		}
+	}
+}
+
+func (gateway *webGateway) audioPost(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != "POST" {
+		http.Error(writer, "Use POST", 405)
+		return
+	}
+	if request.URL.Path == "/api/audio/stop" {
+		gateway.mu.Lock()
+		if gateway.audioCancel != nil {
+			gateway.audioCancel()
+		}
+		gateway.mu.Unlock()
+		writer.WriteHeader(http.StatusNoContent)
+		return
+	}
+	query, err := url.ParseQuery(request.URL.RawQuery)
+	volume, volumeErr := strconv.Atoi(query.Get("volume"))
+	if err != nil || volumeErr != nil || len(query) != 1 || len(query["volume"]) != 1 || volume < -30 || volume > 0 || query.Get("volume") != strconv.Itoa(volume) || request.Header.Get("Content-Type") != "application/octet-stream" {
+		http.Error(writer, "Use mono 8000 Hz signed 16-bit little-endian PCM and volume -30 to 0", 400)
+		return
+	}
+	if !gateway.audioMu.TryLock() {
+		http.Error(writer, "Speaker is busy", 409)
+		return
+	}
+	defer gateway.audioMu.Unlock()
+	gateway.mu.Lock()
+	private := gateway.privacy
+	gateway.mu.Unlock()
+	if private { http.Error(writer, "Camera privacy mode is enabled", http.StatusServiceUnavailable); return }
+	if !speakerMemoryAvailable() {
+		http.Error(writer, "Not enough free memory for speaker playback", 503)
+		return
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, 480000)
+	body := request.Body
+	ctx, cancel := context.WithTimeout(request.Context(), 40*time.Second)
+	defer cancel()
+	stopClose := context.AfterFunc(ctx, func() { _ = body.Close() })
+	defer stopClose()
+	gateway.mu.Lock()
+	gateway.audioCancel = cancel
+	private = gateway.privacy
+	gateway.mu.Unlock()
+	if private { cancel() }
+	defer func() {
+		gateway.mu.Lock()
+		gateway.audioCancel = nil
+		gateway.mu.Unlock()
+	}()
+	_ = http.NewResponseController(writer).SetReadDeadline(time.Now().Add(10 * time.Second))
+	file, err := os.CreateTemp("/tmp", "anyka-vocal-*.pcm")
+	if err != nil {
+		http.Error(writer, "Cannot prepare speaker playback", 503)
+		return
+	}
+	defer os.Remove(file.Name())
+	length, copyErr := io.Copy(file, request.Body)
+	closeErr := file.Close()
+	if copyErr != nil || closeErr != nil || length == 0 || length%2 != 0 {
+		http.Error(writer, "Invalid PCM or more than thirty seconds of audio", 400)
+		return
+	}
+	if envDefault("ANYKA_NATIVE_RTSP", "0") == "1" {
+		gateway.nativeAudioFile(writer, request, file.Name(), volume)
+		return
+	}
+	sdkDir := filepath.Dir(envDefault("ANYKA_ACCESS_FILE", "/mnt/openipc-persist/web-access.json")) + "/sdk-rtsp"
+	defer func() {
+		if err := speakerPower(sdkDir, false); err != nil {
+			log.Print("Cannot mute speaker amplifier")
+		}
+	}()
+	if err = speakerPower(sdkDir, true); err != nil {
+		http.Error(writer, "Cannot enable speaker amplifier", 503)
+		return
+	}
+	command := exec.CommandContext(ctx, sdkDir+"/anyka-audio-play", "-s", "8000", "-c", "1", "-d", "0", "-v", strconv.Itoa(volume), "-p", file.Name())
+	command.Env = append(os.Environ(), "LD_LIBRARY_PATH="+sdkDir+"/lib", "LD_PRELOAD=")
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Cancel = func() error { return syscall.Kill(-command.Process.Pid, syscall.SIGKILL) }
+	command.WaitDelay = time.Second
+	output := &audioPlaybackOutput{}
+	command.Stdout, command.Stderr = output, output
+	err = command.Run()
+	result := string(output.data)
+	if err != nil || !strings.Contains(result, "read to the end of file") || !strings.Contains(result, "write_da_pcm exit") || strings.Contains(result, " failed") || strings.Contains(result, " error") || strings.Contains(result, " false") {
+		if ctx.Err() != nil {
+			http.Error(writer, "Playback stopped or timed out", 408)
+		} else {
+			http.Error(writer, "Speaker playback failed", 503)
+		}
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (gateway *webGateway) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if request.URL.Path != path.Clean(request.URL.Path) || strings.ContainsAny(request.URL.Path, "\\%\x00") {
+		http.Error(writer, "Invalid request path", 400)
+		return
+	}
+	host := request.Host
+	if hostname, _, err := net.SplitHostPort(host); err == nil {
+		host = hostname
+	}
+	if net.ParseIP(host) == nil && !strings.EqualFold(host, "GP5_A10S14A5") && host != "localhost" {
+		http.Error(writer, "Unrecognized camera host", 400)
+		return
+	}
+	if filepath.Clean(request.URL.Path) != request.URL.Path || strings.ContainsAny(request.URL.EscapedPath(), "%\\") {
+		http.Error(writer, "Invalid path", 400)
+		return
+	}
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	writer.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	writer.Header().Set("Referrer-Policy", "same-origin")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'self'")
+	if gateway.uiDisabled && !headlessRoute(request.URL.Path, request.Method) {
+		http.NotFound(writer, request)
+		return
+	}
+	if request.Method != "GET" && request.Method != "HEAD" && request.Method != "POST" {
+		http.Error(writer, "Method not allowed", 405)
+		return
+	}
+	if request.Method == "POST" {
+		protocol := "http://"
+		if request.TLS != nil {
+			protocol = "https://"
+		}
+		if request.Header.Get("Origin") != protocol+request.Host {
+			http.Error(writer, "Same-origin POST required", 403)
+			return
+		}
+	}
+	gateway.mu.Lock()
+	configured := gateway.access.PasswordHash != ""
+	authorized := gateway.authorized(request)
+	if !configured {
+		remoteIP, _, _ := net.SplitHostPort(request.RemoteAddr)
+		if remoteIP != gateway.bootstrapIP {
+			gateway.mu.Unlock()
+			http.Error(writer, "Initial setup is restricted to the installation computer", 403)
+			return
+		}
+	}
+	if request.URL.Path == "/cgi-bin/access.cgi" && request.Method == "POST" {
+		gateway.accessPost(writer, request)
+		gateway.mu.Unlock()
+		return
+	}
+	if request.URL.Path == "/logout" {
+		if request.Method != "POST" {
+			gateway.mu.Unlock()
+			http.Error(writer, "Use POST", 405)
+			return
+		}
+		if cookie, err := request.Cookie("anyka_session"); err == nil {
+			delete(gateway.sessions, cookie.Value)
+		}
+		gateway.mu.Unlock()
+		http.SetCookie(writer, &http.Cookie{Name: "anyka_session", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+		http.Redirect(writer, request, "/cgi-bin/access.cgi", 303)
+		return
+	}
+	gateway.mu.Unlock()
+	public := request.Method != "POST" && (request.URL.Path == "/cgi-bin/access.cgi" || strings.HasPrefix(request.URL.Path, "/a/") || request.URL.Path == "/favicon.ico")
+	snapshot := request.URL.Path == "/image.jpg" || request.URL.Path == "/cgi-bin/snapshot.cgi"
+	if !authorized && snapshot && request.Method == "GET" {
+		if !gateway.snapshotAccess(writer, request) {
+			return
+		}
+		authorized = true
+	}
+	if !authorized && !public {
+		if !gateway.uiDisabled && request.Method == "GET" && request.Header.Get("Upgrade") == "" && !strings.HasPrefix(request.URL.Path, "/api/") {
+			http.Redirect(writer, request, "/cgi-bin/access.cgi", 303)
+		} else {
+			http.Error(writer, "Unauthorized", 401)
+		}
+		return
+	}
+	if request.URL.Path == "/api/privacy" {
+		gateway.privacyHTTP(writer, request)
+		return
+	}
+	gateway.mu.Lock()
+	private := gateway.privacy
+	gateway.mu.Unlock()
+	if private && snapshot && request.Method == "GET" && os.Getenv("ANYKA_NATIVE_RTSP") == "1" {
+		if request.URL.RawQuery != "" {
+			http.Error(writer, "Unexpected query", http.StatusBadRequest)
+			return
+		}
+		writer.Header().Set("Content-Type", "image/jpeg")
+		writer.Header().Set("Cache-Control", "no-store")
+		http.ServeFile(writer, request, gateway.privacyAsset("privacy-slate.jpg"))
+		return
+	}
+	if private && (snapshot || request.URL.Path == "/api/ws" ||
+		request.URL.Path == "/api/audio/live" || request.URL.Path == "/api/audio/play") {
+		http.Error(writer, "Camera privacy mode is enabled", http.StatusServiceUnavailable)
+		return
+	}
+	if request.URL.Path == "/api/audio/live" {
+		gateway.audioLive(writer, request)
+		return
+	}
+	if public && (strings.HasPrefix(request.URL.Path, "/a/") || request.URL.Path == "/favicon.ico") {
+		filename := filepath.Dir(gateway.accessFile) + "/sdk-rtsp/www" + request.URL.Path
+		info, err := os.Stat(filename)
+		if err != nil || !info.Mode().IsRegular() {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+		http.ServeFile(writer, request, filename)
+		return
+	}
+	if request.Method == "GET" && request.URL.Path == "/cgi-bin/metrics.cgi" {
+		if request.URL.RawQuery != "" {
+			http.Error(writer, "Unexpected query", 400)
+			return
+		}
+		cameraMetrics(writer)
+		return
+	}
+	if request.Method == "GET" && request.URL.Path == "/cgi-bin/isp.cgi" {
+		if request.URL.RawQuery != "" {
+			http.Error(writer, "Unexpected query", http.StatusBadRequest)
+			return
+		}
+		runtimeStatus(writer, "/tmp/anyka-image.json")
+		return
+	}
+	if request.Method == "GET" && request.URL.Path == "/cgi-bin/gpio.cgi" && request.URL.RawQuery == "action=daynight-status" {
+		runtimeStatus(writer, "/tmp/anyka-daynight.json")
+		return
+	}
+	if request.URL.Path == "/api/audio/play" || request.URL.Path == "/api/audio/stop" {
+		gateway.audioPost(writer, request)
+		return
+	}
+	if request.URL.Path == "/api/ntfy" || request.URL.Path == "/api/time" {
+		if request.Method != "POST" {
+			http.Error(writer, "Use POST", 405)
+			return
+		}
+		if request.URL.Path == "/api/time" {
+			timePost(writer, request)
+			return
+		}
+		gateway.mu.Lock()
+		if time.Since(gateway.lastNotification) < 15*time.Second {
+			gateway.mu.Unlock()
+			http.Error(writer, "Wait fifteen seconds before sending again", 429)
+			return
+		}
+		gateway.lastNotification = time.Now()
+		gateway.mu.Unlock()
+		notificationPost(writer, request)
+		return
+	}
+	request.Header.Del("Authorization")
+	request.Header.Set("X-Anyka-Configured", "false")
+	request.Header.Set("X-Anyka-Logged-In", "false")
+	if configured {
+		request.Header.Set("X-Anyka-Configured", "true")
+	}
+	if authorized {
+		request.Header.Set("X-Anyka-Logged-In", "true")
+	}
+	if !gateway.uiDisabled {
+		pageHeaders(request, host)
+	}
+	if authorized && cachedPage(writer, request, gateway.pages) {
+		return
+	}
+	if request.URL.Path == "/api/ws" {
+		if request.Method != "GET" || request.URL.Query().Get("src") != "preview" {
+			http.Error(writer, "Forbidden stream", 403)
+			return
+		}
+		if request.Header.Get("Origin") != "http://"+request.Host {
+			http.Error(writer, "Same-origin WebSocket required", 403)
+			return
+		}
+		ctx, cancel := context.WithCancel(request.Context())
+		gateway.mu.Lock()
+		if gateway.privacy {
+			gateway.mu.Unlock()
+			cancel()
+			http.Error(writer, "Camera privacy mode is enabled", http.StatusServiceUnavailable)
+			return
+		}
+		gateway.nextPreviewID++
+		id := gateway.nextPreviewID
+		if gateway.previewCancel == nil { gateway.previewCancel = make(map[uint64]context.CancelFunc) }
+		gateway.previewCancel[id] = cancel
+		gateway.mu.Unlock()
+		defer func() {
+			gateway.mu.Lock()
+			delete(gateway.previewCancel, id)
+			gateway.mu.Unlock()
+			cancel()
+		}()
+		gateway.video.ServeHTTP(writer, request.WithContext(ctx))
+		return
+	}
+	allowed := public || request.URL.Path == "/" || request.URL.Path == "/index.html"
+	if request.URL.Path == "/image.jpg" {
+		if request.Method != "GET" || request.URL.RawQuery != "" {
+			http.Error(writer, "Use GET without query", 405)
+			return
+		}
+		request.URL.Path = "/cgi-bin/snapshot.cgi"
+	}
+	switch request.URL.Path {
+	case "/cgi-bin/dashboard.cgi", "/cgi-bin/live.cgi", "/cgi-bin/camera.cgi", "/cgi-bin/stream-urls.cgi", "/cgi-bin/metrics.cgi", "/cgi-bin/ptz.cgi", "/cgi-bin/gpio.cgi", "/cgi-bin/isp.cgi", "/cgi-bin/snapshot.cgi", "/cgi-bin/logs.cgi", "/cgi-bin/logs-data.cgi", "/cgi-bin/tools.cgi", "/cgi-bin/extensions.cgi", "/cgi-bin/ntfy.cgi":
+		allowed = true
+	}
+	if !allowed {
+		http.NotFound(writer, request)
+		return
+	}
+	gateway.web.ServeHTTP(writer, request)
+}
+
+func startGateway() {
+	if err := os.Remove(mediaSecretPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Fatal("Cannot remove obsolete media credentials")
+	}
+	webURL, _ := url.Parse(envDefault("ANYKA_WEB_BACKEND", "http://127.0.0.1:8080"))
+	videoURL, _ := url.Parse("http://127.0.0.1:1984")
+	gateway := &webGateway{
+		uiDisabled: os.Getenv("ANYKA_WEB_UI") == "0",
+		accessFile:  filepath.Clean(envDefault("ANYKA_ACCESS_FILE", "/mnt/openipc-persist/web-access.json")),
+		bootstrapIP: envDefault("ANYKA_SETUP_IP", "192.0.2.20"), sessions: make(map[string]time.Time),
+		web: httputil.NewSingleHostReverseProxy(webURL), video: httputil.NewSingleHostReverseProxy(videoURL),
+	}
+	if _, err := os.Stat(privacyPath); err == nil {
+		gateway.privacy = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		log.Fatal("Cannot read privacy mode")
+	}
+	data, err := os.ReadFile(gateway.accessFile)
+	if err == nil {
+		if json.Unmarshal(data, &gateway.access) != nil || gateway.access.PasswordHash == "" {
+			log.Fatal("Invalid private access configuration")
+		}
+		cost, err := bcrypt.Cost([]byte(gateway.access.PasswordHash))
+		if err != nil || cost < 8 || cost > 12 {
+			log.Fatal("Invalid password hash")
+		}
+		if gateway.access.DigestHA1 != "" && !validMediaSecret(gateway.access.DigestHA1) {
+			log.Fatal("Invalid media access configuration")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		log.Fatal("Cannot read private access configuration")
+	}
+	mediaRTSP.ServerAuthenticator = gateway.rtspAccess
+	if os.Getenv("ANYKA_NATIVE_RTSP") == "1" {
+		gateway.startNativeAuth()
+	}
+	if !gateway.uiDisabled && gateway.access.PasswordHash != "" {
+		gateway.pages = preloadPages(webURL.String())
+	}
+	debug.FreeOSMemory()
+	mediaRTSP.ServerClosed = func(connection net.Conn) {
+		gateway.mu.Lock()
+		_, authenticated := gateway.mediaPeers[connection]
+		delete(gateway.mediaPeers, connection)
+		lastMedia := authenticated && len(gateway.mediaPeers) == 0
+		gateway.mu.Unlock()
+		// Return idle heap pages promptly on this 26 MiB kernel. Anonymous
+		// disconnects must not be able to force garbage collection.
+		if lastMedia {
+			debug.FreeOSMemory()
+		}
+	}
+	listener, err := net.Listen("tcp", envDefault("ANYKA_WEB_LISTEN", ":80"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	server := &http.Server{Handler: gateway, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
+	go func() {
+		if err := server.Serve(listener); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	log.Printf("[anyka-web] listening on %s, interface enabled=%t", listener.Addr(), !gateway.uiDisabled)
+}
+
+func main() {
+	app.Version = "1.9.14-anyka"
+	app.Init()
+	ui := os.Getenv("ANYKA_WEB_UI") != "0"
+	native := os.Getenv("ANYKA_NATIVE_RTSP") == "1"
+	if ui {
+		api.Init()
+		ws.Init()
+	}
+	if ui || !native {
+		streams.Init()
+	}
+	if ui {
+		mp4.Init()
+	}
+	startGateway()
+	if !native {
+		rtsp.Init()
+	}
+	shell.RunUntilSignal()
+}

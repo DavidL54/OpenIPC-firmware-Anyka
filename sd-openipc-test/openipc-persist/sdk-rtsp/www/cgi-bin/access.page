@@ -1,0 +1,39 @@
+#!/media/usr/bin/haserl
+<%in p/common.cgi %>
+<% page_title="Access" %>
+<%in p/header.cgi %>
+<% case "${GET_error:-}" in
+ password) notice danger 'Use matching passwords, between 12 and 72 bytes.' ;;
+ login) notice danger 'Invalid password.' ;;
+esac %>
+<div class="row g-4"><div class="col-12 col-md-6">
+ <div class="card"><div class="card-body">
+ <% if [ "${HTTP_X_ANYKA_LOGGED_IN:-false}" = true ] || [ "${HTTP_X_ANYKA_CONFIGURED:-false}" != true ]; then %>
+  <% card_head "Admin password" %>
+  <form action="access.cgi" method="post">
+   <% field_hidden action password %>
+   <% field_string ui_username Username admin %>
+   <% field_password password_default Password %>
+   <% field_password password_confirm "Confirm password" %>
+   <p class="hint text-secondary">12-72 bytes. Stored as a password hash on SD; never included in the public bundle.</p>
+   <% button_submit "Save password" %>
+  </form>
+ <% else %>
+  <% card_head "Sign in" %>
+  <form action="access.cgi" method="post">
+   <% field_hidden action login %>
+   <% field_string ui_username Username admin %>
+   <% field_password password_default Password %>
+   <% button_submit "Sign in" %>
+  </form>
+ <% fi %>
+ </div></div>
+</div></div>
+<p class="text-warning mt-3">HTTP and RTSP are not encrypted. Use a trusted LAN or a VPN.</p>
+<script>
+document.getElementById('ui_username').readOnly = true;
+const password = document.getElementById('password_default');
+password.required = true;
+password.autocomplete = document.getElementById('password_confirm') ? 'new-password' : 'current-password';
+</script>
+<%in p/footer.cgi %>

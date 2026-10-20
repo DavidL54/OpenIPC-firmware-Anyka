@@ -1,0 +1,5 @@
+::sysinit:/tmp/anyka-flash-tools/busybox sh /tmp/anyka-maintenance/boot.sh
+::respawn:/tmp/anyka-flash-tools/busybox sh /tmp/anyka-maintenance/wpa.sh
+::respawn:/tmp/anyka-flash-tools/busybox sh /tmp/anyka-maintenance/sshd.sh
+::restart:/tmp/anyka-flash-tools/busybox init
+::shutdown:/tmp/anyka-flash-tools/busybox sync

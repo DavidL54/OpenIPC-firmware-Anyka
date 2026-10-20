@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/anyka/ptz-presets.schema.json",
+  "title": "Camera private preset storage, version 1",
+  "type": "object",
+  "required": [
+    "version",
+    "startup",
+    "positions"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "startup": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8
+    },
+    "positions": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "pan",
+          "tilt"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The C implementation additionally enforces valid UTF-8 and at most 48 encoded bytes."
+          },
+          "pan": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4039
+          },
+          "tilt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 967
+          }
+        }
+      }
+    }
+  },
+  "$comment": "Application additionally enforces unique IDs, strict JSON object fields/duplicates and startup references an existing slot. GET adds current/homed; recall replies may instead be helper position output."
+}

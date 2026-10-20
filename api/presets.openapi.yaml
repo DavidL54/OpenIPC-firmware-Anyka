@@ -1,0 +1,69 @@
+openapi: 3.0.3
+info:
+  title: Experimental Anyka camera preset API subset
+  version: '1.0'
+  description: Preset routes only. See source and docs/http-api.md for validation and response variants.
+servers:
+  - url: http://192.0.2.10
+security:
+  - cameraSession: []
+paths:
+  /api/ptz/presets:
+    get:
+      summary: Read camera-owned saved positions and current state
+      responses:
+        '200':
+          description: Version 1 preset object, current position or null, homed flag
+        '401':
+          description: Web session required
+        '503':
+          description: Invalid or unavailable saved configuration
+    post:
+      summary: Save, recall, delete or select startup position
+      description: Same-origin required. No query string. Do not automatically retry recall after timeout.
+      parameters:
+        - in: header
+          name: Origin
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [action, id]
+              properties:
+                action:
+                  type: string
+                  enum: [save, recall, delete, startup]
+                id:
+                  type: integer
+                  minimum: 0
+                  maximum: 8
+                  description: Zero only for startup; other actions require 1..8
+                name:
+                  type: string
+                  description: Required for save, valid UTF-8, 1..48 encoded bytes
+      responses:
+        '200':
+          description: Updated preset state or successful recall helper position
+        '400':
+          description: Invalid form, action, slot or name
+        '401':
+          description: Session required
+        '403':
+          description: Same-origin check failed
+        '404':
+          description: Selected slot does not exist
+        '409':
+          description: Not homed, busy or movement interrupted
+        '503':
+          description: Movement, configuration or durable write failed
+components:
+  securitySchemes:
+    cameraSession:
+      type: apiKey
+      in: cookie
+      name: anyka_session

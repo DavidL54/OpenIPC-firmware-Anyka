@@ -1,0 +1,11 @@
+api:
+  listen: "127.0.0.1:1984"
+  allow_paths: ["/", "/api/ws"]
+rtsp:
+  listen: ":554"
+webrtc:
+  listen: ""
+streams:
+  preview: "rtsp://127.0.0.1:8555/vs1#backchannel=0"
+  vs0: "rtsp://127.0.0.1:8555/vs0#backchannel=0"
+  vs1: "rtsp://127.0.0.1:8555/vs1#backchannel=0"

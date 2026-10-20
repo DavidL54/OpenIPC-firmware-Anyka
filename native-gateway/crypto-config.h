@@ -1,0 +1,3 @@
+#define MBEDTLS_MD5_C
+#define MBEDTLS_SHA1_C
+#define MBEDTLS_BASE64_C

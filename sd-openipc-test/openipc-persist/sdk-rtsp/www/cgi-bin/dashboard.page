@@ -1,0 +1,238 @@
+#!/media/usr/bin/haserl
+<%in p/common.cgi %>
+
+<% hide_signature=1 %>
+<% hide_title=1 %>
+<%in p/header.cgi %>
+
+<% sd_rows=$(bb df -h /mnt /media | bb awk '/mmcblk/{print $6"|"$3" / "$2"|"$5}') %>
+
+<div id="st-alerts" class="mt-3" hidden aria-live="polite">
+	<div class="mj-notice mj-notice-warn" id="st-alert-stale" hidden>
+		<svg class="mj-notice-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.6 21.2 19.4H2.8z"/><path d="M12 10.2v4"/><path d="M12 17.1h.01"/></svg>
+		<div class="mj-notice-txt">Camera is not responding — retrying&hellip;</div>
+	</div>
+	<div class="mj-notice mj-notice-warn" id="st-alert-ircut" hidden>
+		<svg class="mj-notice-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.6 21.2 19.4H2.8z"/><path d="M12 10.2v4"/><path d="M12 17.1h.01"/></svg>
+		<div class="mj-notice-txt"><b id="st-alert-ircut-t"></b> &mdash; <span id="st-alert-ircut-d"></span></div>
+		<span class="mj-notice-acts"><a class="btn btn-sm btn-primary" href="camera.cgi?tab=nightMode">Open Day / Night</a></span>
+	</div>
+	<div class="mj-notice mj-notice-warn" id="st-alert-legacy" hidden>
+		<svg class="mj-notice-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.6 21.2 19.4H2.8z"/><path d="M12 10.2v4"/><path d="M12 17.1h.01"/></svg>
+		<div class="mj-notice-txt"><b>Legacy day/night settings are in use</b> &mdash; this camera switches on the older pair of raw sensor-gain thresholds. Automatic switching reads the sensor's own exposure instead, and needs no numbers and no calibration.</div>
+		<span class="mj-notice-acts"><a class="btn btn-sm btn-primary" href="camera.cgi?tab=nightMode">Open Day / Night</a></span>
+		<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+	</div>
+	<div class="mj-notice mj-notice-warn" id="st-alert-novideo" hidden>
+		<svg class="mj-notice-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.6 21.2 19.4H2.8z"/><path d="M12 10.2v4"/><path d="M12 17.1h.01"/></svg>
+		<div class="mj-notice-txt"><b id="st-alert-novideo-t"></b> &mdash; <span id="st-alert-novideo-d"></span></div>
+		<span class="mj-notice-acts"><a class="btn btn-sm btn-primary" id="st-alert-novideo-a" href="camera.cgi?tab=isp"></a>
+		<a class="btn btn-sm btn-secondary" id="st-alert-novideo-h" href="logs.cgi" hidden></a></span>
+	</div>
+	<div class="mj-notice mj-notice-info" id="st-alert-wasnovideo" hidden>
+		<svg class="mj-notice-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.7"/><path d="M12 11.2v5.2"/><path d="M12 7.7h.01"/></svg>
+		<div class="mj-notice-txt">Live video was not available a moment ago, so you were brought here.<span id="st-alert-wasnovideo-ok"></span></div>
+		<span class="mj-notice-acts"><a class="btn btn-sm btn-primary" href="live.cgi">Open Live</a></span>
+	</div>
+</div>
+
+<div class="st-kpis mt-3" aria-live="polite">
+	<div class="st-panel st-tile">
+		<div class="mj-cap">CPU</div>
+		<div class="st-val"><span id="st-cpu">&ndash;</span><span class="st-unit"> %</span></div>
+		<div class="x-small text-secondary">load <span id="st-load">&ndash;</span>
+			<a href="https://github.com/OpenIPC/wiki/blob/master/en/trouble-load-average.md"
+			   class="text-secondary text-decoration-none"
+			   aria-label="Why is the load average high?"
+			   title="1-minute load average — not a CPU-usage figure. Linux counts tasks in uninterruptible sleep as well as runnable ones, and vendor SDK driver threads stay in that state permanently, so on SigmaStar SoCs this reads 12-13 even on an idle camera. Judge the CPU by the percentage above. Click for details.">&#9432;</a>
+		</div>
+		<div id="spark-cpu" class="spark st-tile-spark"></div>
+	</div>
+	<div class="st-panel st-tile">
+		<div class="mj-cap">Memory</div>
+		<div class="st-val"><span id="st-ram">&ndash;</span><span class="st-unit"> %</span></div>
+		<div class="x-small text-secondary st-sub"><span id="st-ram-mb">&ndash;</span><span id="st-ram-span"></span></div>
+		<div id="spark-ram" class="spark st-tile-spark"></div>
+	</div>
+	<div class="st-panel st-tile">
+		<div class="mj-cap">Temperature</div>
+		<div class="st-val"><span id="st-temp">&ndash;</span><span class="st-unit" id="st-temp-u"> &deg;C</span></div>
+		<div class="x-small text-secondary" id="st-temp-note">SoC</div>
+		<div id="spark-temp" class="spark st-tile-spark"></div>
+	</div>
+	<div class="st-panel st-tile" id="st-enc-tile" hidden>
+		<div class="mj-cap">Encoder out</div>
+		<div class="st-val"><span id="st-enc">&ndash;</span><span class="st-unit"> Mbit/s</span></div>
+		<div class="x-small text-secondary" id="st-enc-sub">main stream</div>
+		<div id="spark-enc" class="spark st-tile-spark"></div>
+	</div>
+	<div class="st-panel st-tile" id="st-wifi-tile" hidden>
+		<div class="mj-cap mj-cap-wifi">Wi-Fi signal</div>
+		<div class="st-val"><span id="st-wifi-val">&ndash;</span><span class="st-unit" id="st-wifi-unit"></span></div>
+		<div class="x-small text-secondary" id="st-wifi-grade"></div>
+		<div id="spark-wifi" class="spark st-tile-spark"></div>
+	</div>
+	<div class="st-panel st-tile" id="st-lte-tile" hidden>
+		<div class="mj-cap">LTE signal</div>
+		<div class="st-val"><span id="st-lte-val">&ndash;</span><span class="st-unit"> dBm</span></div>
+		<div class="x-small text-secondary" id="st-lte-grade"></div>
+		<div id="spark-lte" class="spark st-tile-spark"></div>
+	</div>
+	<div class="st-panel st-tile">
+		<div class="mj-cap">Uptime</div>
+		<div class="st-val-sm" id="st-uptime">&ndash;</div>
+	</div>
+</div>
+
+<div class="st-grid mt-3">
+	<div class="st-charts">
+
+		<div class="st-hero-row">
+			<a class="st-prev" id="st-prev" href="live.cgi" aria-label="Open Live view">
+				<img id="st-prev-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'/%3E" alt="" hidden>
+				<span class="st-prev-off small" id="st-prev-off">loading&hellip;</span>
+				<span class="st-prev-play" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></span>
+				<span class="st-prev-chip" id="st-prev-chip" hidden></span>
+				<span class="st-prev-bar"><span id="st-prev-note">snapshot</span><span class="st-prev-go">Open Live &rarr;</span></span>
+			</a>
+			<div class="st-panel st-chartbox" id="st-enc-panel" hidden>
+				<div class="st-chart-head">
+					<span class="mj-cap">Encoder output &mdash; main stream</span>
+					<span class="st-now" id="st-enc-now"></span>
+				</div>
+				<div class="mj-chart" id="ch-enc"></div>
+				<div class="x-small text-secondary" id="st-enc-note"></div>
+			</div>
+		</div>
+
+		<div class="st-chart-row">
+			<div class="st-panel st-chartbox">
+				<div class="st-chart-head">
+					<span class="mj-cap">Network (Mbit/s)</span>
+					<span class="x-small text-secondary st-legend">
+						<span><i class="st-dot st-dot-c1"></i>up</span>
+						<span><i class="st-dot st-dot-c2"></i>down</span>
+					</span>
+				</div>
+				<div class="mj-chart" id="ch-net"></div>
+			</div>
+			<div class="st-panel st-chartbox" id="st-wifi-panel" hidden>
+				<div class="st-chart-head">
+					<span class="mj-cap mj-cap-wifi">Wi-Fi signal</span>
+					<span class="st-now" id="st-wifi-now"></span>
+				</div>
+				<div class="mj-chart" id="ch-wifi"></div>
+				<div class="x-small text-secondary" id="st-wifi-none" hidden></div>
+				<div class="x-small text-secondary" id="st-wifi-sub"></div>
+			</div>
+			<div class="st-panel st-chartbox" id="st-lte-panel" hidden>
+				<div class="st-chart-head">
+					<span class="mj-cap">LTE signal (RSRP)</span>
+					<span class="st-now" id="st-lte-now"></span>
+				</div>
+				<div class="mj-chart" id="ch-lte"></div>
+				<div class="x-small" id="st-lte-state"></div>
+				<div class="x-small text-secondary" id="st-lte-sub"></div>
+			</div>
+		</div>
+
+		<div class="st-chart-row" id="st-mem-row" hidden>
+			<div class="st-panel st-chartbox" id="st-mem-panel">
+				<div class="st-chart-head">
+					<span class="mj-cap">Memory &mdash; what is holding it</span>
+					<span class="x-small text-secondary st-legend">
+						<span id="st-mem-lg-vid"><i class="st-dot st-dot-c4"></i>Video buffers</span>
+						<span id="st-mem-lg-prog"><i class="st-dot st-dot-c1"></i>Programs</span>
+						<span id="st-mem-lg-krn"><i class="st-dot st-dot-c3"></i>Kernel</span>
+						<span id="st-mem-lg-disk"><i class="st-dot st-dot-c2"></i>RAM disk</span>
+						<span id="st-mem-lg-other"><i class="st-dot st-dot-mute"></i>Other</span>
+					</span>
+				</div>
+				<div class="mj-chart" id="ch-mem"></div>
+				<div class="x-small text-secondary" id="st-mem-note"></div>
+			</div>
+		</div>
+
+		<div class="st-chart-row">
+			<div class="st-panel st-chartbox" id="st-luma-panel" hidden>
+				<div class="st-chart-head">
+					<span class="mj-cap">Scene luminance</span>
+					<span class="st-now" id="st-luma-now"></span>
+				</div>
+				<div class="mj-chart" id="ch-luma"></div>
+				<div class="x-small text-secondary" id="st-luma-note"></div>
+			</div>
+			<div class="st-panel st-chartbox">
+				<div class="st-chart-head">
+					<span class="mj-cap">ISP &mdash; what this SoC reports</span>
+					<span class="x-small text-secondary">raw SDK units</span>
+				</div>
+				<dl class="small list mb-0" id="st-isp"></dl>
+				<div class="small text-secondary" id="st-isp-empty">Not reported</div>
+				<div class="x-small text-secondary mt-2" id="st-daynight" aria-live="polite"></div>
+			</div>
+		</div>
+	</div>
+
+	<div class="st-rail">
+		<div class="st-panel">
+			<div class="mj-cap mb-2">Streams</div>
+			<div id="streams" class="d-flex flex-column gap-2"><div class="text-secondary small">loading&hellip;</div></div>
+		</div>
+
+		<div class="st-panel">
+			<div class="mj-cap mb-2">Device</div>
+			<dl class="small list mb-0">
+				<dt>SoC</dt><dd><% esc "$soc" %> <span class="text-secondary">(<% esc "$soc_family" %>)</span></dd>
+				<dt>Sensor</dt><dd><% esc "$sensor" %></dd>
+				<dt>Firmware</dt><dd><% esc "${fw_version}-${fw_variant}" %></dd>
+				<dt>Build</dt><dd class="text-break"><% esc "$fw_build" %></dd>
+				<dt>Backend</dt><dd>AnyCloud RTSP SDK 1.03</dd>
+				<dt>WebUI</dt><dd class="text-break"><% esc "${webui_version:-unknown}" %></dd>
+				<% if [ -n "$uboot_version" ]; then %>
+					<dt>U-Boot</dt><dd><% esc "$uboot_version" %></dd>
+				<% fi %>
+			</dl>
+		</div>
+
+		<div class="st-panel">
+			<div class="mj-cap mb-2">Storage</div>
+			<dl class="small list mb-2">
+				<dt>Flash</dt><dd><% esc "$flash_size" %> MB <span class="text-secondary"><% esc "$flash_type" %></span></dd>
+			</dl>
+			<% if [ -n "$sd_rows" ]; then %>
+				<% echo "$sd_rows" | while IFS='|' read mnt use pct; do %>
+					<div class="d-flex align-items-center gap-2 x-small mj-sd-row" data-mnt="<% attr_escape "$mnt" %>">
+						<span class="badge text-bg-secondary flex-shrink-0 mj-sd-badge">SD</span>
+						<span class="text-secondary"><% esc "$mnt — $use ($pct)" %><span class="mj-sd-why"></span></span>
+					</div>
+				<% done %>
+			<% else %>
+				<div class="x-small text-secondary">No SD card detected</div>
+			<% fi %>
+		</div>
+
+		<div class="st-panel">
+			<div class="mj-cap mb-2">Network</div>
+			<dl class="small list mb-0">
+				<dt>Host</dt><dd><% esc "$network_hostname" %></dd>
+				<% if [ -n "$net_rows" ]; then %>
+					<% echo "$net_rows" | while IFS='|' read n a m; do %>
+						<dt><% esc "$n" %><% [ "$n" = "$net_defdev" ] && echo ' <span class="text-secondary x-small">default</span>' %></dt>
+						<dd><% esc "$a" %><div class="x-small text-secondary text-break"><% esc "$m" %></div></dd>
+					<% done %>
+				<% else %>
+					<dt>Address</dt><dd><% esc "$network_address" %></dd>
+					<dt>MAC</dt><dd class="text-break"><% esc "$network_macaddr" %></dd>
+					<dt>Link</dt><dd><% esc "$network_interface" %></dd>
+				<% fi %>
+				<dt>Gateway</dt><dd><% esc "${net_gw:-$network_gateway}" %></dd>
+			</dl>
+		</div>
+	</div>
+</div>
+
+<script src="/a/charts.js" defer></script>
+<script type="module" src="/a/anyka-dashboard.js"></script>
+
+<%in p/footer.cgi %>

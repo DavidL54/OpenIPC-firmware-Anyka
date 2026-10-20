@@ -1,0 +1,42 @@
+#!/media/usr/bin/haserl
+<%in p/common.cgi %>
+<% hide_title=1 %>
+<% camera_tab=night; case "${GET_tab:-}" in image|lights) camera_tab=$GET_tab ;; esac %>
+<%in p/header.cgi %>
+<div class="row g-4 mb-4">
+	<div class="col-12 col-md-3">
+		<div class="sticky-md-top" id="mj-rail">
+			<h2 class="mj-rail-title"><%= $page_title %></h2>
+			<button type="button" class="mj-rail-toggle" id="mj-rail-toggle" hidden
+				aria-expanded="false" aria-controls="mj-search-wrap mj-settings-nav">
+				<span class="mj-rail-where"></span><span class="mj-tree-caret"></span>
+			</button>
+			<p class="d-none mj-search" id="mj-search-wrap">
+				<input type="search" class="form-control form-control-sm" id="mj-search"
+					placeholder="Search settings..." autocomplete="off" aria-label="Search settings"
+					aria-controls="mj-settings-nav">
+			</p>
+			<ul class="nav nav-pills flex-column small" id="mj-settings-nav"></ul>
+		</div>
+	</div>
+	<div class="col-12 col-md-9" id="mj-settings-form-col">
+		<script type="application/json" id="mj-settings-boot">{"tab":"<%= $camera_tab %>","soc":"Anyka","labels":{"night":"Day / Night"},"exclude":["pins","live"],"fonts":[]}</script>
+		<form id="mj-settings-form" action="javascript:void(0)" autocomplete="off">
+			<p class="text-secondary small mb-0">Loading settings...</p>
+		</form>
+	</div>
+</div>
+<script src="/a/anyka-camera.js"></script>
+<script src="/a/charts.js" defer></script>
+<script src="/a/ircut-check.js" defer></script>
+<script src="/a/mj-requires.js" defer></script>
+<script src="/a/mj-tree.js" defer></script>
+<script src="/a/mj-help.js" defer></script>
+<script src="/a/mj-rail.js" defer></script>
+<script src="/a/mj-fps.js" defer></script>
+<script src="/a/mj-table.js" defer></script>
+<script src="/a/mj-outgoing.js" defer></script>
+<script src="/a/mj-place.js" defer></script>
+<script src="/a/mj-queue.js" defer></script>
+<script src="/a/mj-settings.js" defer></script>
+<%in p/footer.cgi %>

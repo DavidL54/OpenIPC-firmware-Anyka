@@ -1,0 +1,121 @@
+#!/bin/sh
+# Generated private camera package. Default: checks only. RAM-only SSH maintenance supported.
+set -eu
+BB=/tmp/anyka-flash-tools/busybox
+bb() { "$BB" "$@"; }
+fail() { echo "STOP: $*" >&2; exit 1; }
+if [ "$$" = 1 ]; then
+    trap 'echo "Returned to static RAM console; no automatic reboot" >&2; exec "$BB" sh' EXIT HUP INT TERM
+fi
+[ "$#" -ge 1 ] && [ "$#" -le 3 ] || fail 'Expected absolute package directory and optional mode/token'
+pkg=$1
+mode=${2:---check}
+case "$pkg" in /mnt/anyka-internal-flash-20261017) ;; *) fail 'Unexpected package path' ;; esac
+case "$mode" in --check|--program|--program-ssh) ;; *) fail 'Unknown mode' ;; esac
+[ -x "$BB" ] && [ ! -L "$BB" ] || fail 'Static RAM tool missing'
+check_hash() {
+    actual=$(bb sha256sum "$2" | bb awk '{print $1}')
+    [ "$actual" = "$1" ] || fail 'An artifact or NOR partition differs from its pinned hash'
+}
+check_hash @BUSYBOX_SHA@ "$BB"
+[ "$(bb uname -r)" = 4.4.302-cip94 ] || fail 'Kernel mismatch'
+bb awk '
+$1=="mtd0:" && $2=="00040000" && $3=="00001000" && $4=="\"uboot\"" {u=1}
+$1=="mtd1:" && $2=="00010000" && $3=="00001000" && $4=="\"dtb\"" {d=1}
+$1=="mtd2:" && $2=="001c0000" && $3=="00001000" && $4=="\"kernel\"" {k=1}
+$1=="mtd3:" && $2=="000f0000" && $3=="00001000" && $4=="\"rootfs\"" {r=1}
+$1=="mtd4:" && $2=="004a0000" && $3=="00001000" && $4=="\"app\"" {a=1}
+$1=="mtd5:" && $2=="00060000" && $3=="00001000" && $4=="\"config\"" {c=1}
+END {exit !(u&&d&&k&&r&&a&&c)}' /proc/mtd || fail 'Partition map mismatch'
+bb awk '$2=="/tmp" && $3=="tmpfs" {ok=1} END {exit !ok}' /proc/mounts || fail 'RAM filesystem missing'
+bb awk '$2=="/" && $3=="squashfs" && $4 ~ /^ro(,|$)/ {ok=1} END {exit !ok}' /proc/mounts || fail 'Root filesystem must be read-only'
+bb awk '$2=="/mnt" && $1=="/dev/mmcblk0p1" && $3=="vfat" && $4 ~ /^ro(,|$)/ {ok=1} END {exit !ok}' /proc/mounts || fail 'FAT must be mounted read-only'
+(cd "$pkg" && bb sha256sum -c SHA256SUMS >/dev/null) || fail 'Package manifest mismatch'
+check_hash @SNAPSHOT_SHA@ /dev/mtd6ro
+check_hash @SNAPSHOT_SHA@ "$pkg/rollback/full-nor-before.bin"
+[ "$(bb wc -c < "$pkg/install/rootfs-mtd3.bin")" = 983040 ] || fail 'Rootfs size'
+[ "$(bb wc -c < "$pkg/install/app-mtd4.bin")" = 4849664 ] || fail 'App size'
+[ "$(bb wc -c < "$pkg/install/config-mtd5.jffs2")" = 393216 ] || fail 'Config size'
+check_hash @ROOT_SHA@ "$pkg/install/rootfs-mtd3.bin"
+check_hash @APP_SHA@ "$pkg/install/app-mtd4.bin"
+check_hash @CONFIG_SHA@ "$pkg/install/config-mtd5.jffs2"
+(cd /mnt/openipc-persist && bb sha256sum -c "$pkg/SD-PRIVATE-SHA256SUMS" >/dev/null) || fail 'Private settings changed: regenerate the package'
+# New settings must not be silently left out of migration.
+for file in /mnt/openipc-persist/sdk-rtsp/*.conf; do
+    [ -e "$file" ] || continue
+    name=${file#/mnt/openipc-persist/}
+    bb awk -v n="$name" '$2==n {ok=1} END {exit !ok}' "$pkg/SD-PRIVATE-SHA256SUMS" || fail 'New setting requires migration review'
+done
+echo 'CHECKS_OK: exact firmware, private settings, rollback and partition layout; no NOR write'
+[ "$mode" != --check ] || exit 0
+[ "${3:-}" = PROGRAM_MTD3_MTD4_MTD5 ] || fail 'Explicit partition token missing'
+# Authorization is granted by the user for these three partitions. The hardware
+# is reserved for recovery, per the user's explicit instruction for SSH flashing.
+[ -f /tmp/anyka-flash-authorization ] && [ ! -L /tmp/anyka-flash-authorization ] || fail 'Partition authorization has not been recorded'
+[ "$(bb cat /tmp/anyka-flash-authorization)" = 'mtd3 mtd4 mtd5 @SNAPSHOT_SHA@' ] || fail 'Wrong authorization scope'
+[ -f /tmp/anyka-recovery-available ] && [ ! -L /tmp/anyka-recovery-available ] || fail 'Recovery availability has not been recorded'
+[ "$(bb cat /tmp/anyka-recovery-available)" = 'user-confirmed @SNAPSHOT_SHA@' ] || fail 'Recovery does not match this snapshot'
+if [ "$mode" = --program-ssh ]; then
+    [ -f /tmp/anyka-maintenance/confirmed ] || fail 'SSH RAM handoff has not been confirmed'
+    "$BB" sh /tmp/anyka-maintenance/check-no-nor.sh || fail 'NOR-backed userspace remains'
+else
+    [ "$$" = 1 ] && [ "$(bb readlink /proc/1/exe)" = "$BB" ] || fail 'Programming requires the static RAM init shell'
+    for directory in /proc/[0-9]*; do
+        [ "${directory##*/}" = 1 ] && continue
+        bytes=$(bb wc -c < "$directory/cmdline" 2>/dev/null || echo 0)
+        [ "$bytes" = 0 ] || fail 'Another user process is running'
+    done
+fi
+[ ! -e /tmp/anyka-config-check ] || fail 'Configuration check mountpoint already exists'
+bb mkdir -m 700 /tmp/anyka-config-check
+# Preserve a RAM console on every failure. Never fall through and exit PID 1.
+failed() {
+    echo 'INSTALLATION STOPPED. Do not reboot: inspect or restore from the private rollback.' >&2
+    if [ "$mode" = --program-ssh ]; then
+        bb touch /tmp/anyka-maintenance/write-failed
+        exit 1
+    fi
+    exec "$BB" sh
+}
+trap failed EXIT HUP INT TERM
+# All writable target filesystems must be unmounted. The root remains read-only;
+# PID 1 and every command below execute exclusively from static RAM BusyBox.
+if bb awk '$2=="/app" {ok=1} END {exit !ok}' /proc/mounts; then bb umount /app; fi
+bb awk '$1 ~ /^\/dev\/mtd(block)?[45]$/ {bad=1} END {exit bad}' /proc/mounts
+if [ "$mode" = --program-ssh ]; then
+    "$BB" sh /tmp/anyka-maintenance/check-no-nor.sh
+    bb touch /tmp/anyka-maintenance/nor-write-started
+fi
+# Configuration first: check the actual kernel mount before touching app/rootfs.
+bb flashcp "$pkg/install/config-mtd5.jffs2" /dev/mtd5
+check_hash @CONFIG_SHA@ /dev/mtd5ro
+bb mount -t jffs2 -o ro /dev/mtdblock5 /tmp/anyka-config-check
+(cd /tmp/anyka-config-check && bb sha256sum -c "$pkg/CONFIG-FILES-SHA256SUMS" >/dev/null)
+while IFS=' ' read -r kind name; do
+    entry=/tmp/anyka-config-check/openipc-persist/sdk-rtsp/$name
+    case "$kind" in
+        D) [ -d "$entry" ] && [ ! -L "$entry" ] ;;
+        F) [ -L "$entry" ] && [ "$(bb readlink "$entry")" = "/app/runtime/sdk-rtsp/$name" ] ;;
+        *) fail 'Bad runtime index' ;;
+    esac
+done < "$pkg/SDK-INDEX"
+free_kib=$(bb df -k /tmp/anyka-config-check | bb awk 'NR==2 {print $4}')
+[ "$free_kib" -ge 96 ] || fail 'Insufficient JFFS2 reserve'
+bb umount /tmp/anyka-config-check
+bb rmdir /tmp/anyka-config-check
+bb flashcp "$pkg/install/app-mtd4.bin" /dev/mtd4
+check_hash @APP_SHA@ /dev/mtd4ro
+bb flashcp "$pkg/install/rootfs-mtd3.bin" /dev/mtd3
+check_hash @ROOT_SHA@ /dev/mtd3ro
+check_hash @MTD0_SHA@ /dev/mtd0ro
+check_hash @MTD1_SHA@ /dev/mtd1ro
+check_hash @MTD2_SHA@ /dev/mtd2ro
+bb sync
+trap - EXIT HUP INT TERM
+echo 'PROGRAMMING_VERIFIED: mtd3/mtd4/mtd5 read back; bootloader/DTB/kernel unchanged.'
+echo 'Record this result before the first internal boot; no automatic reboot.'
+if [ "$mode" = --program-ssh ]; then
+    bb touch /tmp/anyka-maintenance/programming-verified
+    exit 0
+fi
+exec "$BB" sh

@@ -1,0 +1,27 @@
+#!/media/usr/bin/haserl
+<%in p/common.cgi %>
+<%in p/header.cgi %>
+
+<div class="row row-cols-1 row-cols-md-2 g-4 mb-4">
+	<div class="col">
+		<% card_head "Video" %>
+		<dl>
+			<dt class="cp2cb">rtsp://<% esc "$network_address" %>:554/vs0</dt>
+			<dd>RTSP main stream. H.264, 2304 &times; 1296, 20 fps. Admin Digest.</dd>
+			<dt class="cp2cb">rtsp://<% esc "$network_address" %>:554/vs1</dt>
+			<dd>RTSP sub stream. H.264, 640 &times; 360, 20 fps. Admin Digest.</dd>
+			<dt><a href="/image.jpg" target="_blank" rel="noopener">http://<% esc "$network_address" %>/image.jpg</a></dt>
+			<dd>JPEG snapshot. Admin session or Digest.</dd>
+		</dl>
+	</div>
+	<div class="col">
+		<% card_head "Status" %>
+		<dl>
+			<dt>RTSP</dt><dd><% esc "$rtsp_state" %></dd>
+			<dt>Backend</dt><dd>AnyCloud AV130</dd>
+			<dt>Audio</dt><dd>Disabled</dd>
+		</dl>
+	</div>
+</div>
+
+<%in p/footer.cgi %>

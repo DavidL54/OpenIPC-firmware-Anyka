@@ -1,0 +1,11 @@
+{
+  "version": "3.6.4",
+  "archive_sha256": "ec35b18a6c593cf98c3e30db8b98ff93e8940a8c4e690e66b41dfc011d678110",
+  "source": "OpenIPC existing build cache; upstream Mbed-TLS/mbedtls v3.6.4",
+  "modules": [
+    "MD5 for existing Digest contract",
+    "SHA1 for WebSocket handshake",
+    "base64",
+    "platform_util"
+  ]
+}

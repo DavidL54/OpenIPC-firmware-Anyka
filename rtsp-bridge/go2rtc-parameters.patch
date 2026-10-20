@@ -1,0 +1,146 @@
+--- a/pkg/core/track.go
++++ b/pkg/core/track.go
+@@ -11,6 +11,7 @@
+ 
+ type Receiver struct {
+ 	Node
++	anykaH264 *anykaH264Parameters
+ 
+ 	// Deprecated: should be removed
+ 	Media *Media `json:"-"`
+@@ -26,7 +27,11 @@
+ 		Node:  Node{id: NewID(), Codec: codec},
+ 		Media: media,
+ 	}
++	if codec != nil && codec.Name == CodecH264 && codec.IsRTP() {
++		r.anykaH264 = &anykaH264Parameters{ready: make(chan struct{})}
++	}
+ 	r.Input = func(packet *Packet) {
++		if r.anykaH264 != nil { r.anykaH264.receive(packet.Payload) }
+ 		r.Bytes += len(packet.Payload)
+ 		r.Packets++
+ 		for _, child := range r.childs {
+--- a/pkg/rtsp/conn.go
++++ b/pkg/rtsp/conn.go
+@@ -48,6 +48,9 @@
+ 
+ 	state   State
+ 	stateMu sync.Mutex
++	pendingH264 []anykaPendingH264
++	videoReady chan struct{}
++	videoReadyOnce sync.Once
+ 
+ 	udpConn []*net.UDPConn
+ 	udpAddr []*net.UDPAddr
+--- a/pkg/rtsp/consumer.go
++++ b/pkg/rtsp/consumer.go
+@@ -1,6 +1,7 @@
+ package rtsp
+ 
+ import (
++	"strings"
+ 	"time"
+ 
+ 	"github.com/AlexxIT/go2rtc/pkg/aac"
+@@ -17,6 +18,28 @@
+ 	return c.Medias
+ }
+ 
++type anykaPendingH264 struct {
++	codec *core.Codec
++	receiver *core.Receiver
++}
++
++// Publish headers on the DESCRIBE goroutine, rather than mutating a codec
++// asynchronously while it is being serialized into SDP.
++func (c *Conn) completeH264Bootstrap(limit time.Duration) {
++	if len(c.pendingH264) == 0 { return }
++	timer := time.NewTimer(limit)
++	defer timer.Stop()
++	defer func() { c.pendingH264 = nil }()
++	for _, pending := range c.pendingH264 {
++		select {
++		case <-pending.receiver.H264ParametersReady():
++			pending.codec.FmtpLine = pending.receiver.H264Fmtp()
++		case <-timer.C:
++			return
++		}
++	}
++}
++
+ func (c *Conn) AddTrack(media *core.Media, codec *core.Codec, track *core.Receiver) (err error) {
+ 	var channel byte
+ 
+@@ -42,6 +65,16 @@
+ 
+ 		// for consumer is better to use original track codec
+ 		codec = track.Codec.Clone()
++		if codec.Name == core.CodecH264 && codec.IsRTP() && c.videoReady == nil {
++			c.videoReady = make(chan struct{})
++		}
++		if codec.Name == core.CodecH264 && codec.IsRTP() && !strings.Contains(codec.FmtpLine, "sprop-parameter-sets=") {
++			if fmtp := track.H264Fmtp(); fmtp != "" {
++				codec.FmtpLine = fmtp
++			} else {
++				c.pendingH264 = append(c.pendingH264, anykaPendingH264{codec: codec, receiver: track})
++			}
++		}
+ 		// generate new payload type, starting from 96
+ 		codec.PayloadType = byte(96 + len(c.Senders))
+ 
+@@ -96,6 +129,9 @@
+ 		if c.state == StateNone {
+ 			return
+ 		}
++		if !video && c.videoReady != nil {
++			select { case <-c.videoReady: default: return }
++		}
+ 
+ 		clone := rtp.Packet{
+ 			Header: rtp.Header{
+@@ -146,6 +182,11 @@
+ 		}
+ 
+ 		flushBuf()
++		if video && codec.Name == core.CodecH264 && c.videoReady != nil && len(packet.Payload) > 0 {
++			kind := packet.Payload[0] & 31
++			idr := kind == 5 || (kind == 28 && len(packet.Payload) > 1 && packet.Payload[1] & 31 == 5)
++			if idr { c.videoReadyOnce.Do(func() { close(c.videoReady) }) }
++		}
+ 	}
+ 
+ 	if video && codec.Name == core.CodecH264 && codec.IsRTP() {
+--- a/pkg/rtsp/server.go
++++ b/pkg/rtsp/server.go
+@@ -8,6 +8,7 @@
+ 	"net/url"
+ 	"strconv"
+ 	"strings"
++	"time"
+ 
+ 	"github.com/AlexxIT/go2rtc/pkg/core"
+ 	"github.com/AlexxIT/go2rtc/pkg/tcp"
+@@ -162,6 +163,7 @@
+ 				medias = append(medias, media)
+ 			}
+ 
++			c.completeH264Bootstrap(2 * time.Second)
+ 			res.Body, err = core.MarshalSDP(c.SessionName, medias)
+ 			if err != nil {
+ 				return err
+@@ -211,11 +213,15 @@
+ 		case MethodRecord, MethodPlay:
+ 			if c.mode == core.ModePassiveConsumer {
+ 				// stop unconfigured senders
++				videoConfigured := false
+ 				for _, track := range c.Senders {
+ 					if track.Media.ID != MethodSetup {
+ 						track.Close()
++					} else if track.Codec.IsVideo() {
++						videoConfigured = true
+ 					}
+ 				}
++				if !videoConfigured && c.videoReady != nil { c.videoReadyOnce.Do(func() { close(c.videoReady) }) }
+ 			}
+ 
+ 			res := &tcp.Response{Request: req}

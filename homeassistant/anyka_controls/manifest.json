@@ -1,0 +1,13 @@
+{
+  "domain": "anyka_controls",
+  "name": "Anyka Controls",
+  "version": "0.3.0",
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "websocket_api"
+  ],
+  "iot_class": "local_polling",
+  "requirements": [],
+  "codeowners": []
+}

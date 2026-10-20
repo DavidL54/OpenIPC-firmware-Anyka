@@ -1,0 +1,22 @@
+[
+  {
+    "path": "br-ext-chip-anyka/configs/ak3918av130_lite_defconfig",
+    "commit": "97d1c26364e752ff13fafed1a89590cc987be9a3",
+    "sha256": "33ce5040f6d00a15e16822c725d01b108168c25b3753e822ce533ca2e775ddb1"
+  },
+  {
+    "path": "general/package/anyka-osdrv-ak3918av130/Config.in",
+    "commit": "97d1c26364e752ff13fafed1a89590cc987be9a3",
+    "sha256": "0e20a22674925aacfd2fd81e283fa2c8745d5b517bf6681809f338ce9d37a794"
+  },
+  {
+    "path": "general/package/anyka-osdrv-ak3918av130/anyka-osdrv-ak3918av130.mk",
+    "commit": "97d1c26364e752ff13fafed1a89590cc987be9a3",
+    "sha256": "55daaa96a6236988c368bcacf2da297ed31d51a42ed4df40b1e8451870dc95a7"
+  },
+  {
+    "path": "general/package/anyka-osdrv-ak3918av130/files/script/load_anyka",
+    "commit": "97d1c26364e752ff13fafed1a89590cc987be9a3",
+    "sha256": "6995787e7e2bb6e9192091c13c7c44ee04ec19cf2537df6d35e0a5526df1f3ef"
+  }
+]

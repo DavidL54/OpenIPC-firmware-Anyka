@@ -1,0 +1,121 @@
+{
+  "snapshot": "2026-10-20",
+  "new_hardware_tests_during_publication": false,
+  "evidence_type": "Curated summaries of prior local reports; raw private reports excluded",
+  "sources": [
+    {
+      "private_report_label": "native-webui-20261016/INSTALLATION-20261017.json",
+      "sha256": "76726d12e2ffd41a70433d2cdd7cc3299dbf80b8151f342bba6d62a407c31ba0",
+      "raw_included": false
+    },
+    {
+      "private_report_label": "native-webui-20261019/REPAIR-20261019.json",
+      "sha256": "92debb03cfc7f9f33b69759343e808e2bd4117ede80ddaac002f7badffdef346",
+      "raw_included": false
+    },
+    {
+      "private_report_label": "ptz-20261019/INSTALLATION.json",
+      "sha256": "9276f517e7f344a98f6e2bc1ab491050ade55a2cc7fc6599ed1ba99f9df2d1c0",
+      "raw_included": false
+    },
+    {
+      "private_report_label": "reliability-20261020/INSTALLATION.json",
+      "sha256": "91da9e97258b17a740131f881a1a61224a0969c020ab67c86aa322748e401008",
+      "raw_included": false
+    },
+    {
+      "private_report_label": "presets-20261020/INSTALLATION.json",
+      "sha256": "070ef6b2d5a3b7745691b99b47ef58cb9dce238c0231389a44e8e481297e8cee",
+      "raw_included": false
+    },
+    {
+      "private_report_label": "ha-presets-20261020/DEPLOYMENT.json",
+      "sha256": "dc22921d9ab1e691965cfd07e31b901c3492e2503db1e5cac0f53f9f47cf6c56",
+      "raw_included": false
+    }
+  ],
+  "observations": [
+    {
+      "date": "2026-10-17",
+      "stage": "first internal",
+      "decoded_hd_frames": 901,
+      "seconds": 45.23,
+      "physical_sd_free_cold_boot_verified": false
+    },
+    {
+      "date": "2026-10-19",
+      "stage": "ABI and Digest repair",
+      "decoded_hd_frames": 1799,
+      "seconds": 90.97,
+      "decoder_errors": false,
+      "silent_pcm_frames": 25,
+      "speaker_eof_ack": true
+    },
+    {
+      "date": "2026-10-20",
+      "stage": "before latest updates",
+      "uptime_seconds": 51333.12,
+      "memavailable_kib": 9640,
+      "proves_continuous_video": false
+    },
+    {
+      "date": "2026-10-20",
+      "stage": "reliability RAM",
+      "controlled_sdk_recovery_seconds": 25,
+      "decoded_hd_frames_after_recovery": 891,
+      "seconds": 45,
+      "gateway_and_homing_unchanged": true
+    },
+    {
+      "date": "2026-10-20",
+      "stage": "reliability installed",
+      "decoded_hd_frames": 901,
+      "seconds": 45.99,
+      "osd_consecutive_ticks": 12,
+      "osd_update_ms_range": [
+        1,
+        6
+      ],
+      "memavailable_kib": 9548
+    },
+    {
+      "date": "2026-10-20",
+      "stage": "presets installed",
+      "startup_from": [
+        2017,
+        482
+      ],
+      "startup_reached": [
+        1985,
+        482
+      ],
+      "utf8_persisted": true,
+      "long_recall_stop_helper_exit": 5,
+      "decoded_hd_frames": 901,
+      "seconds": 45,
+      "decoder_errors": false,
+      "memavailable_kib": 9704,
+      "config_read_only": true,
+      "config_available_kib": 308,
+      "final_startup": 0,
+      "final_positions": []
+    },
+    {
+      "date": "2026-10-20",
+      "stage": "HA 0.3.0",
+      "presets_get_http": 200,
+      "invalid_slot9_http": 400,
+      "card_http": 200,
+      "decoded_hd_frames": 201,
+      "seconds": 10
+    }
+  ],
+  "remaining_gaps": [
+    "final-feature overnight stability",
+    "physical cold boot without SD",
+    "independent security review",
+    "physical real-person recognition and tracking",
+    "cross-board validation",
+    "clean upstream image boot"
+  ]
+}

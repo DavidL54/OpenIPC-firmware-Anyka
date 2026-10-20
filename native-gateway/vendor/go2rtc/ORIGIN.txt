@@ -1,0 +1,13 @@
+The bounded C muxer in ../../mux.c adapts these MIT-licensed files from the
+already downloaded official AlexxIT/go2rtc 1.9.14 source tree:
+https://github.com/AlexxIT/go2rtc/tree/v1.9.14/pkg/iso
+https://github.com/AlexxIT/go2rtc/blob/v1.9.14/pkg/pcm/flac.go
+
+Original input SHA-256:
+7d2df673300f669a0deea523900d90900bd6dd678cd6d5a2fc1cf53c9971d396  pkg/iso/atoms.go
+730e89a8faebf921ab4aae52d091f2f7dc6235be826e0edb0428c7fd560963a8  pkg/iso/codecs.go
+1ec7f804d0b558b37c80dfa11e44bb3086430ce5e1bbfe45af0fb023bf388198  pkg/pcm/flac.go
+
+Only H.264 AVC and mono 8kHz FLAC/verbatim remain. The implementation uses
+fixed-size MP4 metadata, one bounded frame and one browser client. It does
+not embed or execute any Go code. Preserve this license in firmware builds.

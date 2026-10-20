@@ -1,0 +1,18 @@
+#!/media/usr/bin/haserl
+<%in p/common.cgi %>
+<% page_title="Ntfy" %>
+<%in p/header.cgi %>
+<div class="row g-4"><div class="col-12 col-lg-8"><div class="card"><div class="card-body">
+ <% card_head "Text notification" %>
+ <form id="ntfy-form">
+  <% field_string server Server https://ntfy.sh %>
+  <% field_string topic Topic %>
+  <% field_password token "Access token" %>
+  <% field_string message Message "Anyka camera notification" %>
+  <p class="hint text-secondary">Use a private topic and an access token. No snapshots, clips or automatic events are sent.</p>
+  <% button_submit Send %>
+ </form>
+ <p id="ntfy-result" role="status" class="mt-3 mb-0"></p>
+</div></div></div></div>
+<script src="/a/anyka-ntfy.js"></script>
+<%in p/footer.cgi %>

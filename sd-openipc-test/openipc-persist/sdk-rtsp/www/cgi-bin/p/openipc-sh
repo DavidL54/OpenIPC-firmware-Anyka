@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /media/lib/ld-musl-arm.so.1 --library-path /media/lib:/media/usr/lib /media/bin/busybox sh "$@"

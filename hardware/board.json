@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "snapshot": "2026-10-20",
+  "support_status": "experimental, one physical sample",
+  "model": "GP5_A10S14A5",
+  "dt_board": "EVB_CBDM_AK3918av130_V1.0.0",
+  "compatible": "anyka,ak3918av130",
+  "soc": "AK3918AV130_B",
+  "cpu": "ARM926EJ-S",
+  "isa": "ARMv5TEJ",
+  "float_abi": "soft",
+  "ram_bytes": 67108864,
+  "linux_memtotal_kib_observed": 26860,
+  "video_reservation": {
+    "base": "0x81400000",
+    "bytes": 33554432
+  },
+  "kernel": "4.4.302-cip94 (stock)",
+  "uboot": "2019.10.0-V4.0.27 (stock)",
+  "flash": {
+    "model": "ZB25VQ64",
+    "bytes": 8388608,
+    "erase_bytes_observed": 4096,
+    "partitions": [
+      {
+        "mtd": 0,
+        "offset": 0,
+        "size": 262144,
+        "role": "bootloader/environment",
+        "preserved_in_current_architecture": true
+      },
+      {
+        "mtd": 1,
+        "offset": 262144,
+        "size": 65536,
+        "role": "device tree",
+        "preserved_in_current_architecture": true
+      },
+      {
+        "mtd": 2,
+        "offset": 327680,
+        "size": 1835008,
+        "role": "kernel",
+        "preserved_in_current_architecture": true
+      },
+      {
+        "mtd": 3,
+        "offset": 2162688,
+        "size": 983040,
+        "role": "rootfs",
+        "preserved_in_current_architecture": false
+      },
+      {
+        "mtd": 4,
+        "offset": 3145728,
+        "size": 4849664,
+        "role": "application",
+        "preserved_in_current_architecture": false
+      },
+      {
+        "mtd": 5,
+        "offset": 7995392,
+        "size": 393216,
+        "role": "configuration",
+        "preserved_in_current_architecture": false
+      }
+    ],
+    "aggregate_alias": {
+      "mtd": 6,
+      "overlaps_all_partitions": true
+    }
+  },
+  "sensor": {
+    "label": "SC3336 / SC2B3AK",
+    "driver_id": "0x2b3a",
+    "isp_configuration": "/app/ak/sensor/isp_sc2b3ak_mipi_2lane_av130.conf"
+  },
+  "wifi": {
+    "usb_id": "007a:6162",
+    "driver": "atbm6132c_wifi_usb.ko"
+  },
+  "gpio": {
+    "ir_led": {
+      "pin": 56,
+      "active": 1
+    },
+    "speaker_amp": {
+      "pin": 67,
+      "active": 0
+    },
+    "blue_led": {
+      "pin": 68,
+      "active": 0
+    },
+    "ircut_night_pulse": 17,
+    "ircut_day_pulse": 18,
+    "ircut_pulse_ms": 100
+  },
+  "ptz": {
+    "device": "/dev/gv-motor",
+    "axis0_pan_range": [
+      0,
+      4039
+    ],
+    "axis1_tilt_range": [
+      0,
+      967
+    ],
+    "nominal_center": [
+      2019,
+      483
+    ],
+    "observed_center": [
+      2017,
+      482
+    ],
+    "endstop_detection_verified": false,
+    "preset_slots": 8
+  },
+  "uart": {
+    "console": "ttySAK0",
+    "baud": 115200,
+    "format": "8N1",
+    "pad_pinout_verified": false,
+    "voltage_verified": false
+  }
+}

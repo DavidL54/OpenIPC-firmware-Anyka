@@ -1,0 +1,469 @@
+{
+  "date": "2026-10-20",
+  "description": "Inventory of the lab runtime, not a download manifest or redistribution authorization",
+  "sdk_public_reference": "https://github.com/Link-WQS/AnyCloud39AV130_SDK_V1.03",
+  "assets": [
+    {
+      "path": "ak_npu.ko",
+      "bytes": 452624,
+      "sha256": "fdecbf1b2a1f8cce41bd0be921e812a3fe0cddb2af98abb1d3282e42692bf5da",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "ak_rtsp_server_sample",
+      "bytes": 36040,
+      "sha256": "88beb1844ceed548692685881eb0d61a56a60c303c1f62adc1174c283068962b",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "ak_venc_adapter.ko",
+      "bytes": 608632,
+      "sha256": "aecdf51da69ff99e7a89bbd075698b165363c95c963fbf7812c749f7676e339b",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "ak_venc_bridge.ko",
+      "bytes": 32816,
+      "sha256": "e11e72cbd7e304431a7f9266f346d192f0beb7cc04fe62b01652bf95823defcb",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "anyka-audio-play",
+      "bytes": 13828,
+      "sha256": "635039c0d635e7e56ea94cfb473b85e7b6e1f408fb3b8c27769a4af937b0e5dd",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "anyka-daynight.so",
+      "bytes": 94292,
+      "sha256": "5f3ef43ea4ee8b9e591f1991cd534807fa453304cab3041652f10e6ee8bb35a5",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "anyka-gpio",
+      "bytes": 9508,
+      "sha256": "d6d5225c6d8d3a7f676ea15d5348cdc66069df30b838840cb4faf27bd03d614b",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "anyka-native-rtsp.so",
+      "bytes": 37260,
+      "sha256": "dc208614bb6caf559b5f118625e81aa18429d95d0c6610ca9215d8a486635f7a",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "anyka-ptz",
+      "bytes": 9532,
+      "sha256": "c103dcd46587cf36d2b7cc75caf9b94f28d67e0dcfc11ec0c8944fd4e40f6509",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "anyka-rtsp-auth.so",
+      "bytes": 5736,
+      "sha256": "8512b70d6ec9198237202a1fc22309809eaab681a2ea6b51d34571ca6ad011fa",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "anyka-sdk-log",
+      "bytes": 9532,
+      "sha256": "4251c3992c9512e8b97b14c6a97c5bde15a7707c6973be64010e11c1ea1179c2",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "disable-audio.so",
+      "bytes": 5100,
+      "sha256": "6fd01d824634a18eb2359b59a6316ee296f9ea4d3672e740c66dd386c55d08d0",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "go2rtc",
+      "bytes": 8847544,
+      "sha256": "4db354917d199b150ad12ba2c0b7153b24264aee24dc55f378c4b6330733af21",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "lib/anyka-person-sdk.so",
+      "bytes": 5116,
+      "sha256": "9ee9bbf0475147b1202a64a22f305c2715f490abf8531f4488703b82def4b8a9",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "lib/libakAIcrydetect.so",
+      "bytes": 30226,
+      "sha256": "7df1a3309d7c441c88c9e28fec0afed7080236cf93b1a59958fe89f6f5b34eff",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libak_mrd.so",
+      "bytes": 20568,
+      "sha256": "c15edad410be5fa3bf3d2a43ed10cff29babf9ceb15f3c0d20a94fb26ffb2ed4",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libak_mt_math.so",
+      "bytes": 14372,
+      "sha256": "9b55e4391f9a4918798f66b431fe0cca602968e51768252807d26b7420e4c481",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libak_nne.so",
+      "bytes": 9440,
+      "sha256": "2487033151dc18e93004376d590077d3de1215c6971d057694c88077b288df88",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libak_object_filter.so",
+      "bytes": 22164,
+      "sha256": "cc160122f5f5e11f8d5287d9bd33fc1be3acb5cbf48d6fb2a39167da453d4118",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libak_vibe.so",
+      "bytes": 22688,
+      "sha256": "48e73e32d91237000800f1b9dfda8d0ecf16385f46b2270b38184ff35eb6943e",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakaac.so",
+      "bytes": 190401,
+      "sha256": "4c460632074d103eb39c784300e936515e4f873244a5f23656e8384fdf18470b",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakamr.so",
+      "bytes": 169569,
+      "sha256": "a1cd7acccc10e8c3e1ea22b65d229ffd3f39ece2f496a74625c81cf925e2edee",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakaudiocodec.so",
+      "bytes": 54985,
+      "sha256": "a169996616be2246f3cdcc7a572fd740fe1e5065d2930559c2c4b5d63d5e1050",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakaudiofilter.so",
+      "bytes": 231604,
+      "sha256": "4da5195c0980af005f1120ee628723d10617f33316c6d9cd3a37741c936abab6",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakmedia.so",
+      "bytes": 237052,
+      "sha256": "b8d517918286acfadeeb6fff83faa6ed4498cb4e84df00a7fd90b6a449230618",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakmp3.so",
+      "bytes": 95713,
+      "sha256": "6ae88ab431c9d70a18e333d30739fa0f4bc9aad8d5eced7cdce6c1769cd49eb4",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakpitch.so",
+      "bytes": 26015,
+      "sha256": "a56acd64bbd9b91263554d73e983283bdb3b2a50d0885435e76e91e5ef30f5ce",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakresample.so",
+      "bytes": 13710,
+      "sha256": "1ca20ed14579b88f5a4fa89500ec6925acc25ba2d430a9bb246550628eedbc0c",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libaktw.so",
+      "bytes": 13672,
+      "sha256": "6bd374d0684211615a9ce4b2a27d626f7b7396d3fc98c23e46a454ed2a32b674",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakv_cnn_dt.so",
+      "bytes": 94512,
+      "sha256": "2ed4fe181606634d99715cd1da6fcae6359f967887ba9f3b3c15e4ecff44800e",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libakvad.so",
+      "bytes": 9646,
+      "sha256": "346a7412b45a183dcea89dc6c97d44932aaef893b1525377183804fb31a18020",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libapp_ats.so",
+      "bytes": 44980,
+      "sha256": "16ae35e261c16608a1d105ba63e0b8f9dddef1c6cfff9ab048405bfbd83a1987",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libapp_its.so",
+      "bytes": 22820,
+      "sha256": "c29aa20f2325ac3b55b7fb1b7f0900f88895cd3a34226206aaea31f625a16882",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libapp_mem_ex.so",
+      "bytes": 12292,
+      "sha256": "c56c66abc9ce4181e745d4618c135c202f4ce87e718b516826556d3c4ae9411e",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libapp_osd_ex.so",
+      "bytes": 33696,
+      "sha256": "3291613df2176eb74dce67d6ca37b7d4adf6a27cf9a1adb85cd78ad39a59b2a2",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libapp_video.so",
+      "bytes": 31320,
+      "sha256": "5ff6517ea4c16a661c047cacffaeded7302937e7369c59f493b6774c7b496a6e",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libmpi_adec.so",
+      "bytes": 31672,
+      "sha256": "f6a4968297fcc8438c0d5a65af56eda6013abaca494821fa447ab3ea9c550c68",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libmpi_aenc.so",
+      "bytes": 31132,
+      "sha256": "1d2edb97d3546c999b203b1ceb3620b9b23e1073e4483300ec8a16363ed887b8",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libmpi_demux.so",
+      "bytes": 21768,
+      "sha256": "bda17d82c45e774230497e2e742459ebf1f164c8420de0e2d1116b588a58704f",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libmpi_mux.so",
+      "bytes": 25884,
+      "sha256": "0100e4f8fe11aa5f7fff9051c544360aa8b5f27f0d43dcfd5a609792ef633db5",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libmpi_osd.so",
+      "bytes": 30124,
+      "sha256": "cb81cdf46aef29319f8d860dba4943f8d1bd2bc17d301350a5b2d9960d5b503d",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libmpi_svp2.so",
+      "bytes": 25852,
+      "sha256": "8d6190c659c7434904ef121c30e910471828b5211da2e0818c563d111205d56a",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libmpi_venc.so",
+      "bytes": 50460,
+      "sha256": "14e8aee8dac7cccffe223c75a82a019a3ce449e5459f52a5aac161f21f4af3eb",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_ai.so",
+      "bytes": 91580,
+      "sha256": "b6aa4ec4cb6b0bae61e23d396c066a7531e48a6234f26f9c499cb2409ce21574",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_amp_msg.so",
+      "bytes": 9432,
+      "sha256": "270fb890046a63c42f747f497a8ecde6d9bbfeb881b1f9ae81c231b3d7de1873",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_ao.so",
+      "bytes": 58712,
+      "sha256": "be10454f8f72a52d87d65ede11bb4da9d0f07f71b0846975c45c013fce803c79",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_audio_detect.so",
+      "bytes": 30164,
+      "sha256": "a66f85a83cc9ac648ff7c1a5aa30e897ceb45f86a2f3061d2fcc919defe5386d",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_audio_effect.so",
+      "bytes": 30100,
+      "sha256": "b513d6da3d9af1424aa23a8de517e4807bae6c1ae1a78daf2fcabd8c3f26712e",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_common.so",
+      "bytes": 25932,
+      "sha256": "ace735e39d808061f3a32710e03f202d70f102922b39d64a06071c459db389d8",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_dbg.so",
+      "bytes": 29964,
+      "sha256": "905e778eaf683d46360bbb829250a594daaf2d493405e8a5c256b81da4c90af5",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_isp_sdk.so",
+      "bytes": 13552,
+      "sha256": "328ee4628c6af6d57dde61b02b1eba480503c29eecaec9de350412f2d288edcd",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_log.so",
+      "bytes": 9444,
+      "sha256": "a5ac9909d60789e9262ccf1342318dc63e03c1aa169d7d578f43b0462732e177",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_mem.so",
+      "bytes": 34112,
+      "sha256": "ec9c07bbe4215065f738623fc5a7bff6f8c12f59f1eccf0c88a84a17af8d5653",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_npu.so",
+      "bytes": 9432,
+      "sha256": "81c9b1c585912f3f40a2ce02406d58960afcd497dfdddec15b64a2b3defc7aca",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_osal.so",
+      "bytes": 42244,
+      "sha256": "ea588ef0f36c2fd12a2ee6b108f4ed5180925dc1aae2175d3b0fb63e326023d1",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_thread.so",
+      "bytes": 9488,
+      "sha256": "150b2fe910ab5d895b909275fb590712fc3855203a5c24b50cadc569ace0db1d",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_timer.so",
+      "bytes": 5336,
+      "sha256": "be8121bcf442db981e7ec168f72a824c8e3fcd33a027dc7fd6eb4d996edf7d34",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_uuid.so",
+      "bytes": 9440,
+      "sha256": "338897790d8c0ff4953239a998a6268da733ec89c6e6d25d3d629e3f5af171f1",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_vi.so",
+      "bytes": 83504,
+      "sha256": "2649cc191406982b8453fa9e75379aedb6e7b5bfd1f42d4ebf1c93358d84284a",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_vpss.so",
+      "bytes": 177740,
+      "sha256": "c799150edba8434046b0af99bc1187232f83544dc3a700e954c2f3a639984a32",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/libplat_vqe.so",
+      "bytes": 102900,
+      "sha256": "fc6a6e93677752c7079fc7f8303136fe1cce53dfd73fef8dfbd99735a0a07d68",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "lib/librtsp_server.so",
+      "bytes": 366004,
+      "sha256": "5d0b19a70647c6c7ad9ea4c3a96a13c7fbc8f71b271e586f275e952ceb9672bb",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    },
+    {
+      "path": "privacy-slate-vs0.h264",
+      "bytes": 18738,
+      "sha256": "d414dc7bb2403659b09ddbebff80c7958581026bc02451c7fbfce6ecba9dedb6",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "privacy-slate-vs1.h264",
+      "bytes": 4170,
+      "sha256": "bf6a8cccf77d57d689f34ed01aa5cc4a9e4fb2e8d9d5c17849e4a9ee8107f2f8",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "privacy-slate.jpg",
+      "bytes": 55805,
+      "sha256": "ea96dde143ab33c6dc82b3ba0cf957c0ada5bb9d267ca324fc68e52dee4ef4b5",
+      "classification": "port-generated binary",
+      "included": false
+    },
+    {
+      "path": "models/model_0x0A000000_V1.1.0.bin",
+      "bytes": 440896,
+      "sha256": "e48cc3d3c3c617b5016334a1fb0d5865ce4ee407fb99a5d543329bd9dc1cceb6",
+      "classification": "vendor dependency; redistribution permission unconfirmed",
+      "included": false
+    }
+  ]
+}

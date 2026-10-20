@@ -1,0 +1,44 @@
+#!/media/usr/bin/haserl
+<%in p/common.cgi %>
+<% page_title="Diagnostics" %>
+<%in p/header.cgi %>
+<style>
+#page-tools .ex h6 { overflow-wrap: anywhere; }
+#page-tools .ex pre { max-width: 100%; overflow-x: auto; }
+</style>
+<nav class="nav nav-tabs mb-3">
+ <a class="nav-link" href="logs.cgi">Logs</a><a class="nav-link active" href="tools.cgi">Diagnostics</a>
+</nav>
+<section class="mb-4"><% group_head "System" %>
+ <% ex "uptime" %>
+ <% ex "cat /proc/meminfo" %>
+ <% ex "date -u" %>
+ <button id="set-clock" type="button" class="btn btn-outline-secondary">Set camera time</button>
+ <span id="clock-result" role="status" class="ms-2"></span>
+</section>
+<section class="mb-4"><% group_head "Network" %>
+ <% ex "ifconfig wlan0" %>
+ <% ex "route -n" %>
+ <% ex "netstat -lnt" %>
+</section>
+<section class="mb-4"><% group_head "SD Card" %>
+ <% ex "df -h /mnt /media /tmp" %>
+ <% ex "cat /proc/mounts | grep -E ' /mnt | /media | /app '" %>
+</section>
+<section class="mb-4"><% group_head "Camera" %>
+ <% ex "cat /sys/module/sensor_sc3336/parameters/SENSOR_ID" %>
+ <% ex "cat /tmp/anyka-daynight.json" %>
+</section>
+<script>
+document.getElementById('set-clock').addEventListener('click', async event => {
+ const button = event.currentTarget;
+ const result = document.getElementById('clock-result');
+ button.disabled = true;
+ try {
+  const response = await fetch('/api/time', {method:'POST', body:new URLSearchParams({seconds:String(Math.floor(Date.now()/1000))})});
+  result.textContent = await response.text();
+ } catch (error) { result.textContent = error.message; }
+ finally { button.disabled = false; }
+});
+</script>
+<%in p/footer.cgi %>

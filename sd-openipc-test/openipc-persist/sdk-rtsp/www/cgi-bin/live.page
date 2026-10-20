@@ -1,0 +1,61 @@
+#!/media/usr/bin/haserl
+<%in p/common.cgi %>
+<%
+pagename=live
+hide_title=1
+full_bleed=1
+%>
+<%in p/header.cgi %>
+<%in p/player.cgi %>
+<% ptz_backend=pelco; ptz_caps='pan tilt' %>
+<%in p/motor.cgi %>
+<section class="container-fluid py-3" aria-label="Positions de la caméra">
+    <h2 class="h5">Positions mémorisées</h2>
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3"><label for="ptz-slot" class="form-label">Position</label><select id="ptz-slot" class="form-select"></select></div>
+        <div class="col-md-3"><label for="ptz-name" class="form-label">Nom</label><input id="ptz-name" class="form-control" maxlength="32" placeholder="Entrée, jardin…"></div>
+        <div class="col-md-6 d-flex flex-wrap gap-2">
+            <button id="ptz-save" class="btn btn-primary" type="button">Enregistrer ici</button>
+            <button id="ptz-recall" class="btn btn-outline-primary" type="button">Rejoindre</button>
+            <button id="ptz-stop" class="btn btn-outline-danger" type="button">Arrêt</button>
+            <button id="ptz-delete" class="btn btn-outline-secondary" type="button">Supprimer</button>
+        </div>
+        <div class="col-md-5"><label for="ptz-startup" class="form-label">Position au démarrage</label><select id="ptz-startup" class="form-select"></select></div>
+        <div class="col-md-4"><button id="ptz-startup-save" class="btn btn-outline-primary" type="button">Enregistrer le choix</button></div>
+        <p class="small text-secondary mb-0">La position choisie est rejointe après le calibrage au démarrage.</p>
+        <p id="ptz-presets-status" class="small mb-0" role="status" aria-live="polite"></p>
+    </div>
+</section>
+<script type="module" src="/a/anyka-ptz-presets.js"></script>
+<section class="container-fluid py-3" aria-label="Camera speaker">
+	<form id="anyka-vocal-form" class="row align-items-end g-2">
+		<div class="col-12 d-flex flex-wrap gap-2">
+			<button type="button" id="anyka-talk" class="btn btn-primary" title="Start live microphone">Talk</button>
+			<button type="button" id="anyka-talk-stop" class="btn btn-outline-danger" title="Stop live microphone" disabled>Stop talking</button>
+			<button type="button" id="anyka-vocal-record" class="btn btn-outline-primary" title="Record microphone">
+				<span aria-hidden="true">&#9679;</span> Record
+			</button>
+			<button type="button" id="anyka-vocal-finish" class="btn btn-outline-secondary" title="Finish recording" disabled>
+				<span aria-hidden="true">&#9632;</span> Finish
+			</button>
+		</div>
+		<div class="col-12" id="anyka-recording-preview" hidden>
+			<audio id="anyka-recording-audio" controls preload="metadata" class="w-100"></audio>
+		</div>
+		<div class="col-12 col-md-5">
+			<label for="anyka-vocal-file" class="form-label">Audio file</label>
+			<input type="file" id="anyka-vocal-file" class="form-control" accept="audio/*,.ogg,.opus,.wav,.mp3,.m4a" required>
+		</div>
+		<div class="col-12 col-md-3">
+			<label for="anyka-vocal-volume" class="form-label">Speaker volume <output id="anyka-vocal-level">-12 dB</output></label>
+			<input type="range" id="anyka-vocal-volume" class="form-range" min="-30" max="0" step="1" value="-12">
+		</div>
+		<div class="col-12 col-md-4 d-flex gap-2">
+			<button type="submit" id="anyka-vocal-play" class="btn btn-primary" disabled>Play on camera</button>
+			<button type="button" id="anyka-vocal-stop" class="btn btn-outline-secondary" disabled>Stop</button>
+		</div>
+		<p id="anyka-vocal-status" class="small mb-0" role="status" hidden></p>
+	</form>
+</section>
+<script type="module" src="/a/anyka-preview.js"></script>
+<%in p/footer.cgi %>

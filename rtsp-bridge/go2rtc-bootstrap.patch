@@ -1,0 +1,44 @@
+--- a/pkg/rtsp/consumer.go
++++ b/pkg/rtsp/consumer.go
+@@ -151,6 +151,41 @@
+ 		flushBuf()
+ 	}
+ 
++	if video && codec.Name == core.CodecH264 && codec.IsRTP() {
++		// The Anyka SDK omits sprop-parameter-sets from SDP and emits SPS/PPS
++		// on PLAY upstream, before this downstream client has finished SETUP.
++		// Retain only these small headers until it can receive media.
++		original := handlerFunc
++		var parameters [2]*rtp.Packet
++		started := false
++		handlerFunc = func(packet *rtp.Packet) {
++			if !started {
++				if len(packet.Payload) > 0 && len(packet.Payload) <= 256 {
++					kind := packet.Payload[0] & 0x1F
++					if kind == 7 || kind == 8 {
++						copy := *packet
++						copy.Payload = append([]byte(nil), packet.Payload...)
++						parameters[kind-7] = &copy
++					}
++				}
++				if c.state == StateNone || !c.playOK || len(packet.Payload) == 0 {
++					return
++				}
++				kind := packet.Payload[0] & 0x1F
++				idr := kind == 5 || (kind == 28 && len(packet.Payload) > 1 && packet.Payload[1]&0x9F == 0x85)
++				if !idr { return } // A P-frame cannot initialize a new decoder.
++				started = true
++			}
++			for i, parameter := range parameters {
++				if parameter != nil {
++					original(parameter)
++					parameters[i] = nil
++				}
++			}
++			original(packet)
++		}
++	}
++
+ 	if !codec.IsRTP() {
+ 		switch codec.Name {
+ 		case core.CodecH264:

@@ -1,0 +1,1 @@
+$$('#theme-choice input[name="webui_theme"]').forEach((e=>{e.addEventListener("change",(()=>{var t;e.checked&&document.documentElement.setAttribute("data-bs-theme","auto"===(t=e.value)?matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light":t)}))}));

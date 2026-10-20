@@ -1,0 +1,181 @@
+package rtsp
+
+import (
+	"bytes"
+	"encoding/binary"
+	"net"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/AlexxIT/go2rtc/pkg/core"
+	"github.com/pion/rtp"
+)
+
+type anykaBootstrapConn struct{ bytes.Buffer }
+
+func (c *anykaBootstrapConn) Read(b []byte) (int, error)     { return c.Buffer.Read(b) }
+func (*anykaBootstrapConn) Close() error                     { return nil }
+func (*anykaBootstrapConn) LocalAddr() net.Addr              { return nil }
+func (*anykaBootstrapConn) RemoteAddr() net.Addr             { return nil }
+func (*anykaBootstrapConn) SetDeadline(time.Time) error      { return nil }
+func (*anykaBootstrapConn) SetReadDeadline(time.Time) error  { return nil }
+func (*anykaBootstrapConn) SetWriteDeadline(time.Time) error { return nil }
+
+func TestAnykaBootstrap(t *testing.T) {
+	capture := &anykaBootstrapConn{}
+	c := &Conn{conn: capture, state: StateNone}
+	writer := c.packetWriter(&core.Codec{Name: core.CodecH264, ClockRate: 90000, PayloadType: 96}, 0, 96)
+	sps := []byte{0x67, 0x42, 0, 0x28}
+	pps := []byte{0x68, 0xee, 0x3c}
+	for i, payload := range [][]byte{sps, pps} {
+		writer(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: uint16(i + 1), Timestamp: 123, SSRC: 42}, Payload: payload})
+	}
+	// The source can reuse its payload: the cached parameter bytes must be owned.
+	sps[1] = 0
+	pps[1] = 0
+	writer(&rtp.Packet{Payload: bytes.Repeat([]byte{0x67}, 1024)}) // oversized header ignored
+	writer(&rtp.Packet{Payload: []byte{0x61, 0}})                  // pre-SETUP pictures discarded
+	if capture.Len() != 0 {
+		t.Fatal("Media sent before SETUP")
+	}
+	c.state = StateSetup
+	writer(&rtp.Packet{Payload: []byte{0x61, 0}, Header: rtp.Header{Marker: true}})
+	if capture.Len() != 0 {
+		t.Fatal("Media sent before PLAY")
+	}
+	c.state = StatePlay
+	c.playOK = true
+	writer(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: 3, Timestamp: 123, Marker: true, SSRC: 42}, Payload: []byte{0x61, 0}})
+	if capture.Len() != 0 {
+		t.Fatal("Reference-dependent picture sent before first IDR")
+	}
+	writer(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: 4, Timestamp: 123, SSRC: 42}, Payload: []byte{0x7c, 0x85, 1, 2}})
+	writer(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: 5, Timestamp: 123, Marker: true, SSRC: 42}, Payload: []byte{0x7c, 0x45, 3, 4}})
+	writer(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: 6, Timestamp: 234, Marker: true, SSRC: 42}, Payload: []byte{0x61, 5}})
+	wanted := [][]byte{{0x67, 0x42, 0, 0x28}, {0x68, 0xee, 0x3c}, {0x7c, 0x85, 1, 2}, {0x7c, 0x45, 3, 4}, {0x61, 5}}
+	sequences := []uint16{1, 2, 4, 5, 6}
+	data := capture.Bytes()
+	for i, payload := range wanted {
+		if len(data) < 4 || data[0] != '$' || data[1] != 0 {
+			t.Fatalf("Missing packet %d", i)
+		}
+		size := int(binary.BigEndian.Uint16(data[2:4]))
+		if len(data) < 4+size {
+			t.Fatal("Truncated packet")
+		}
+		packet := &rtp.Packet{}
+		if err := packet.Unmarshal(data[4 : 4+size]); err != nil {
+			t.Fatal(err)
+		}
+		if packet.SequenceNumber != sequences[i] || !bytes.Equal(packet.Payload, payload) {
+			t.Fatalf("Unexpected bootstrap packet %d", i)
+		}
+		data = data[4+size:]
+	}
+	if len(data) != 0 {
+		t.Fatal("Parameter headers were duplicated")
+	}
+}
+
+func TestAnykaDescribeHasParameters(t *testing.T) {
+	media := &core.Media{Kind: core.KindVideo, Direction: core.DirectionRecvonly}
+	codec := &core.Codec{Name: core.CodecH264, ClockRate: 90000, PayloadType: 96}
+	track := core.NewReceiver(media, codec)
+	client := &Conn{conn: &anykaBootstrapConn{}, mode: core.ModePassiveConsumer}
+	if err := client.AddTrack(media, codec, track); err != nil {
+		t.Fatal(err)
+	}
+	track.WriteRTP(&rtp.Packet{Payload: []byte{0x67, 0x42, 0, 0x28}})
+	track.WriteRTP(&rtp.Packet{Payload: []byte{0x68, 0xee, 0x3c}})
+	client.completeH264Bootstrap(time.Second)
+	fmtp := client.Senders[0].Codec.FmtpLine
+	if !strings.Contains(fmtp, "sprop-parameter-sets=Z0IAKA==,aO48") {
+		t.Fatal(fmtp)
+	}
+	if codec.FmtpLine != "" {
+		t.Fatal("Source codec mutated asynchronously")
+	}
+	for _, sender := range client.Senders {
+		sender.Close()
+		sender.Wait()
+	}
+	// Another client joins the still-live receiver without waiting for a new GOP.
+	second := &Conn{conn: &anykaBootstrapConn{}, mode: core.ModePassiveConsumer}
+	if err := second.AddTrack(media, codec, track); err != nil {
+		t.Fatal(err)
+	}
+	if second.Senders[0].Codec.FmtpLine != fmtp || len(second.pendingH264) != 0 {
+		t.Fatal("Warm client lost headers")
+	}
+	for _, sender := range second.Senders {
+		sender.Close()
+		sender.Wait()
+	}
+	track.Close()
+}
+
+func TestAnykaParameterOwnershipAndBounds(t *testing.T) {
+	track := core.NewReceiver(nil, &core.Codec{Name: core.CodecH264, PayloadType: 96})
+	track.WriteRTP(&rtp.Packet{Payload: []byte{0x67}})
+	track.WriteRTP(&rtp.Packet{Payload: bytes.Repeat([]byte{0x67}, 257)})
+	track.WriteRTP(&rtp.Packet{Payload: []byte{0x68, 0xee, 0x3c}})
+	if track.H264Fmtp() != "" {
+		t.Fatal("Invalid SPS announced")
+	}
+	sps := []byte{0x67, 0x42, 0, 0x28}
+	track.WriteRTP(&rtp.Packet{Payload: sps})
+	sps[1] = 0
+	if !strings.Contains(track.H264Fmtp(), "profile-level-id=420028") {
+		t.Fatal("Borrowed source buffer")
+	}
+	select {
+	case <-track.H264ParametersReady():
+	default:
+		t.Fatal("Parameters never became ready")
+	}
+	track.Close()
+}
+
+func TestAnykaParameterWaitBounded(t *testing.T) {
+	codec := &core.Codec{Name: core.CodecH264, PayloadType: 96}
+	track := core.NewReceiver(nil, codec)
+	client := &Conn{pendingH264: []anykaPendingH264{{codec: codec.Clone(), receiver: track}}}
+	start := time.Now()
+	client.completeH264Bootstrap(5 * time.Millisecond)
+	if time.Since(start) > time.Second || len(client.pendingH264) != 0 {
+		t.Fatal("Unbounded header wait")
+	}
+	track.Close()
+}
+
+func TestAnykaAudioWaitsForCompleteIDR(t *testing.T) {
+	capture := &anykaBootstrapConn{}
+	c := &Conn{conn: capture, state: StatePlay, playOK: true, videoReady: make(chan struct{})}
+	video := c.packetWriter(&core.Codec{Name: core.CodecH264, ClockRate: 90000, PayloadType: 96}, 0, 96)
+	audio := c.packetWriter(&core.Codec{Name: core.CodecPCMA, ClockRate: 8000, PayloadType: 8}, 2, 97)
+	voice := &rtp.Packet{Header: rtp.Header{Version: 2, Marker: true}, Payload: []byte{1, 2, 3}}
+	audio(voice)
+	if capture.Len() != 0 {
+		t.Fatal("Audio outran the first decodable picture")
+	}
+	video(&rtp.Packet{Header: rtp.Header{Version: 2, Marker: true}, Payload: []byte{0x67, 0x42, 0, 0x28}})
+	video(&rtp.Packet{Header: rtp.Header{Version: 2, Marker: true}, Payload: []byte{0x68, 0xee, 0x3c}})
+	video(&rtp.Packet{Header: rtp.Header{Version: 2}, Payload: []byte{0x7c, 0x85, 1, 2}})
+	select {
+	case <-c.videoReady:
+		t.Fatal("Incomplete IDR released audio")
+	default:
+	}
+	video(&rtp.Packet{Header: rtp.Header{Version: 2, Marker: true}, Payload: []byte{0x7c, 0x45, 3, 4}})
+	select {
+	case <-c.videoReady:
+	default:
+		t.Fatal("Complete IDR never released audio")
+	}
+	before := capture.Len()
+	audio(voice)
+	if capture.Len() <= before {
+		t.Fatal("Audio did not resume")
+	}
+}

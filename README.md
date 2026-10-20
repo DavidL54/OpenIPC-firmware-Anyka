@@ -1,73 +1,58 @@
-![OpenIPC logo][logo]
+# OpenIPC experimental port — GP5_A10S14A5 / Anyka AK3918AV130
 
-## Alternative open firmware for your IP camera
-_(based on Buildroot)_
+**Documentation and source handoff, 20 October 2026.** A working internal-NOR experiment on one ARMv5 camera, with native C gateway, OpenIPC WebUI, authenticated RTSP, audio, PTZ presets and Home Assistant controls.
 
-[![Telegram](https://raw.githubusercontent.com/OpenIPC/.github/refs/heads/main/assets/telegram-button.svg)][telegram]
+**This is not an official OpenIPC release or a ready-to-flash image.** It retains the stock kernel/drivers and proprietary SDK inputs. Upstream integration needs architectural, licensing, reproducibility and physical-validation work. Original-code license selection is pending owner confirmation; third-party licenses are retained.
 
+[Français](README.fr.md) · [Complete documentation index](docs/README.md) · [Hardware](docs/hardware.md) · [Build](docs/build.md) · [Observed results](docs/validation.md) · [Upstream plan](docs/upstream.md)
 
-OpenIPC is a rapidly developing open source alternative [firmware][firmware] for 
-popular IP cameras from an [open community](https://opencollective.com/openipc).
+## Caméra, interface et stockage
 
-Historically, OpenIPC [firmware][firmware] only supported SoC manufactured by 
-HiSilicon, but as the development continues, the list of supported processors
-expands. Today, it also includes chips from _Ambarella_, _Anyka_, _Fullhan_, _Goke_,
-_GrainMedia_, _Ingenic_, _MStar_, _Novatek_, _SigmaStar_, _XiongMai_, and is 
-expected to grow further.
+Les captures d’écran ci-dessous ont été préparées pour publication : l’image vidéo, les noms de positions et les identifiants réseau sont masqués. La photographie du matériel est une illustration retouchée ; se référer aux relevés et à la documentation pour l’identification de la carte.
 
-More information about the [project][project] is available in our [website][website]
-and on the [wiki][wiki].
+![Caméra démontée et éléments internes](images/anyka-camera-redacted.png)
 
-## Support
+![Tableau de bord — identifiants réseau masqués](images/anyka-dashboard-redacted.png)
 
-OpenIPC offers two levels of support.
+![Aperçu vidéo — scène et noms de positions masqués](images/anyka-preview-redacted.png)
 
-- Free support through the community (via [chat][telegram]).
-- Paid commercial support (from the team of developers).
+![Commandes de position et fonctions audio — scène masquée](images/anyka-live-redacted.png)
 
-Please consider subscribing for paid commercial support if you intend to use our product for business.
-As a paid customer, you will get technical support and maintenance services directly from our skilled team.
-Your bug reports and feature requests will get prioritized attention and expedited solutions. It's a win-win
-strategy for both parties, that would contribute to the stability your business, and help core developers
-to work on the project full-time.
+![Réglages d’image de la caméra](images/anyka-image-controls.png)
 
-If you have any specific questions concerning our project, feel free to [contact us](mailto:dev@openipc.org).
+### Dump de la mémoire interne
 
+Le dump binaire intégral de la NOR n’est pas inclus dans ce dépôt public : il peut contenir clés d’hôte, identifiants réseau, empreintes de mots de passe, configuration propre à l’appareil et éléments logiciels propriétaires. Pour documenter complètement l’organisation sans publier ces données, voir le [plan des partitions NOR](docs/flash-layout.md) et la [description matérielle structurée](hardware/board.json). L’unité observée possède 8 MiB : MTD0 amorçage/environnement, MTD1 DTB, MTD2 noyau, MTD3 rootfs, MTD4 application, MTD5 configuration ; MTD6 est un alias couvrant toute la puce, pas de la capacité supplémentaire.
 
-## Participating and Contribution
+## Start here
 
-If you like what we do, and willing to intensify the development, please consider participating.
+1. Read [scope and support](docs/status.md), [architecture](docs/architecture.md) and [NOR layout](docs/flash-layout.md).
+2. Inspect [source map](docs/source-map.md), [dependencies](manifests/dependencies.json) and [license status](docs/licensing.md).
+3. Build the standalone [C gateway](docs/build.md), or study the explicitly incomplete full-image pipeline.
+4. Use the [integration issue draft](upstream/ISSUE-DRAFT.md) and [small-PR plan](upstream/PR-PLAN.md) after review.
 
-You can improve existing code and send us patches. You can add new features missing from our code.
+## What is included
 
-You can help us to write a better documentation, proofread and correct our websites.
+Original port sources, C gateway and vendored open-source JSON/crypto, SDK extension source, camera WebUI templates/assets, internal userspace builders/configuration, legacy research code, Home Assistant custom integration/card, board/partition data, dependency inventory, source provenance and curated measured observations.
 
-You can just donate some money to cover the cost of development and long-term maintaining of what we believe
-is going to be the most stable, flexible, and open IP Network Camera Framework for users like yourself.
+Private flash backups, configured images, Wi-Fi/password/host keys, proprietary SDK libraries/modules/models and unredacted deployment reports are excluded. The public SDK reference is not a redistribution license. A source-only checkout cannot currently build a complete firmware image.
 
-You can make a financial contribution to the project at [Open Collective][contribution].
+## Working features and limits
 
-Before your first patch, read [CLAUDE.md](CLAUDE.md) (also readable as `AGENTS.md`). It explains
-how the tree is put together, which changes belong in this repository and which belong in another
-one, and how to check your work — for you and for any AI assistant you code with. The review
-standards themselves are in [best_practices.md](best_practices.md).
+- Main H.264 2304×1296 and substream 640×360 at nominal 20 fps, Digest RTSP/TCP, two public readers.
+- C browser preview, JPEG, native PCM/MP3 speaker transport and implemented Anyka ISP/GPIO controls.
+- Stock PTZ motor ABI, eight named positions and startup recall once after homing; shared WebUI/HA storage.
+- Per-second OSD worker and bounded graceful SDK recovery.
+- Short internal-boot/media checks documented; final overnight stability, physical SD-free cold power-on and real-person/tracking validation remain open.
 
-Thank you.
+Current OpenIPC rules prohibit shipped LD_PRELOAD integration, which this experiment still uses. The roadmap explicitly addresses that blocker rather than labeling the current runtime upstream compliant.
 
-<p align="center">
-<a href="https://opencollective.com/openipc/contribute/backer-14335/checkout" target="_blank"><img src="https://opencollective.com/webpack/donate/button@2x.png?color=blue" width="250" alt="Open Collective donate button"></a>
-</p>
+## Local source audit
 
-[chat]: https://openipc.org/our-channels?ref=readme
-[contribution]: https://opencollective.com/openipc/contribute/backer-14335/checkout
+```sh
+make audit
+```
 
+This checks publication files and provenance locally; it does not build firmware, connect to a camera or run hardware/unit suites. `make gateway` builds only the standalone C gateway with an explicitly configured ARMv5 musl toolchain.
 
-[firmware]: https://github.com/openipc/firmware
-[logo]: https://raw.githubusercontent.com/OpenIPC/.github/refs/heads/main/assets/openipc-logo-black.svg
-[mit]: https://opensource.org/license/mit
-[opencollective]: https://opencollective.com/openipc
-[paypal]: https://www.paypal.com/donate/?hosted_button_id=C6F7UJLA58MBS
-[project]: https://github.com/openipc
-[telegram]: https://openipc.org/our-channels?ref=readme
-[website]: https://openipc.org/?ref=readme
-[wiki]: https://github.com/openipc/wiki
+The destination retains a pre-existing OpenIPC Git history and metadata; this handoff is not a restored upstream Buildroot tree. Review existing deletions and inherited CI before any commit or public push.

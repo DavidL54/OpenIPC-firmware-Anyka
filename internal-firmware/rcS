@@ -1,0 +1,67 @@
+#!/bin/sh
+# Internal NOR candidate: no SD mount and no automatic NOR writes.
+set -eu
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+unset LD_PRELOAD LD_LIBRARY_PATH
+bb() { /bin/busybox "$@"; }
+failure() { echo 'internal-boot: startup failed; UART remains available; no automatic reboot' >&2; }
+trap failure EXIT
+
+bb mount -t proc proc /proc || bb grep -q ' /proc proc ' /proc/mounts
+bb mount -t devtmpfs devtmpfs /dev || bb grep -q ' /dev devtmpfs ' /proc/mounts
+bb mkdir -p /dev/pts
+bb mount -t devpts devpts /dev/pts || bb grep -q ' /dev/pts devpts ' /proc/mounts
+bb mount -t sysfs sysfs /sys || bb grep -q ' /sys sysfs ' /proc/mounts
+bb mount -t tmpfs -o mode=1777 tmpfs /tmp
+bb mount -t tmpfs -o mode=0755 tmpfs /var
+bb mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+bb mount -t tmpfs -o mode=0755,size=2m tmpfs /conf
+bb mkdir -p /var/run/wpa_supplicant
+bb hostname GP5_A10S14A5
+echo /sbin/mdev > /proc/sys/kernel/hotplug
+bb mdev -s
+
+[ "$(bb uname -r)" = 4.4.302-cip94 ]
+bb awk '$1 == "mtd3:" && $2 == "000f0000" { r=1 }
+    $1 == "mtd4:" && $2 == "004a0000" { a=1 }
+    $1 == "mtd5:" && $2 == "00060000" { c=1 }
+    END { exit !(r && a && c) }' /proc/mtd
+bb mount -t squashfs -o ro /dev/mtdblock4 /app
+bb mount -t jffs2 -o ro /dev/mtdblock5 /mnt
+(cd /app && bb sha256sum -c SHA256SUMS >/dev/null)
+
+# Preserve the stock configuration view in RAM. The persistent custom directory
+# stays on the internal JFFS2 partition and is deliberately not copied to RAM.
+for entry in /mnt/* /mnt/.[!.]* /mnt/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    [ "$entry" != /mnt/openipc-persist ] || continue
+    bb cp -a "$entry" /conf/
+done
+bb mkdir -p /conf/anyka-private
+bb chmod 700 /conf/anyka-private
+bb ifconfig lo 127.0.0.1 up
+
+[ -d /mnt/openipc-persist ] && [ ! -L /mnt/openipc-persist ]
+[ -s /mnt/openipc-persist/wpa_supplicant.conf ] && [ ! -L /mnt/openipc-persist/wpa_supplicant.conf ]
+
+/bin/sh /app/ak/load.sh
+attempt=0
+while [ ! -e /sys/class/net/wlan0 ] && [ "$attempt" -lt 10 ]; do
+    bb sleep 1
+    attempt=$((attempt + 1))
+done
+bb ifconfig wlan0 up
+/media/lib/ld-musl-arm.so.1 --library-path /media/lib:/media/usr/lib \
+    /media/usr/sbin/wpa_supplicant -B -i wlan0 -D nl80211 \
+    -c /mnt/openipc-persist/wpa_supplicant.conf
+bb udhcpc -i wlan0 -q -n -t 20 -T 3
+/bin/sh /app/runtime/sdk-rtsp/start-clock.sh
+/bin/sh /app/runtime/sdk-rtsp/start-ssh.sh
+# A runtime/configuration mismatch must leave networking and key-only SSH up.
+[ -d /mnt/openipc-persist/sdk-rtsp ] && [ ! -L /mnt/openipc-persist/sdk-rtsp ]
+[ -s /mnt/openipc-persist/web-access.json ] && [ ! -L /mnt/openipc-persist/web-access.json ]
+/bin/sh /etc/init.d/internal-check-view.sh
+(cd /mnt/openipc-persist/sdk-rtsp && bb sha256sum -c SHA256SUMS >/dev/null)
+/bin/sh /etc/init.d/internal-monitor.sh </dev/null >/dev/console 2>&1 &
+trap - EXIT
+echo 'internal-boot: internal filesystems and network ready; no SD dependency'

@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-20",
+  "kind": "sanitized local source/documentation handoff",
+  "files_including_report": 524,
+  "documentation_chapters": 34,
+  "markdown_word_count_before_report": 12941,
+  "original_source_entries": 452,
+  "excluded_runtime_assets": 66,
+  "local_audit_checks": [
+    "Published file hashes",
+    "Original/exported source hash mapping",
+    "Bundled vendor manifest",
+    "Markdown local link targets",
+    "JSON syntax",
+    "Partition contiguity and total size",
+    "Common private credential patterns and local identity strings",
+    "Excluded firmware/archive magic and file types"
+  ],
+  "camera_contacted": false,
+  "new_hardware_or_unit_tests_run": false,
+  "firmware_built_or_flashed": false,
+  "git_commit_or_remote_push": false,
+  "existing_destination_metadata_preserved": true,
+  "licensing": "Original-code grant pending owner confirmation; third-party notices retained",
+  "upstream_ready": false
+}

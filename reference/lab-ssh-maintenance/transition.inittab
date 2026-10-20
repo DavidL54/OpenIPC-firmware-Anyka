@@ -1,0 +1,3 @@
+::respawn:/tmp/anyka-flash-tools/busybox sh /tmp/anyka-maintenance/ack.sh
+::restart:/tmp/anyka-flash-tools/busybox sh /tmp/anyka-maintenance/enter.sh
+::shutdown:/tmp/anyka-flash-tools/busybox sync

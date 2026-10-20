@@ -1,0 +1,23 @@
+{
+  "review_date": "2026-10-20",
+  "local_upstream_reference_commit": "97d1c26364e752ff13fafed1a89590cc987be9a3",
+  "local_reference_is_not_a_new_port_commit": true,
+  "remote": "https://github.com/OpenIPC/firmware",
+  "existing_defconfig": "br-ext-chip-anyka/configs/ak3918av130_lite_defconfig",
+  "existing_package": "general/package/anyka-osdrv-ak3918av130",
+  "buildroot_version_reviewed": "2024.02.10",
+  "guidance_urls": [
+    "https://github.com/OpenIPC/firmware/blob/master/CLAUDE.md",
+    "https://github.com/OpenIPC/firmware/blob/master/best_practices.md"
+  ],
+  "guidance_ref": "master as reviewed; mutable; recheck before submission",
+  "runtime_upstream_ready": false,
+  "blockers": [
+    "LD_PRELOAD delivery mechanism",
+    "Original code license confirmation",
+    "Vendor and corresponding source provenance",
+    "Full build reproducibility",
+    "Standard first-boot identity",
+    "Cold-boot and sustained validation"
+  ]
+}
