@@ -22,7 +22,3 @@ Ce dépôt n'est **ni une version officielle OpenIPC, ni une image universelle �
 L'intégration officielle exige notamment de remplacer le mécanisme LD_PRELOAD actuellement employé, de résoudre les licences/provenances et de rendre la construction complète reproductible. Le choix de licence du code original reste à confirmer ; les licences existantes des composants tiers sont conservées.
 
 Aucune modification de la caméra, aucun flash et aucune publication distante ne sont effectués par cette préparation documentaire.
-
-## Images et sauvegarde NOR
-
-Les images disponibles dans le README anglais sont expurgées : scène vidéo, noms de positions et identifiants réseau sont masqués. Le dump binaire complet de la mémoire NOR n’est pas publié, car il peut contenir des secrets propres à la caméra et des éléments propriétaires. Son organisation est décrite dans le [plan des partitions NOR](docs/flash-layout.md) ; l’unité observée possède 8 MiB et MTD6 recouvre toute la puce.

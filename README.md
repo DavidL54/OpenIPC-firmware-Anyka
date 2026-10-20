@@ -6,23 +6,19 @@
 
 [Français](README.fr.md) · [Complete documentation index](docs/README.md) · [Hardware](docs/hardware.md) · [Build](docs/build.md) · [Observed results](docs/validation.md) · [Upstream plan](docs/upstream.md)
 
-## Caméra, interface et stockage
+## Camera and interface
 
-Les captures d’écran ci-dessous ont été préparées pour publication : l’image vidéo, les noms de positions et les identifiants réseau sont masqués. La photographie du matériel est une illustration retouchée ; se référer aux relevés et à la documentation pour l’identification de la carte.
+The screenshots below are prepared for publication: the video scene, preset names and network identifiers are redacted. The camera photograph is an edited illustration; see the hardware notes for board identification.
 
-![Caméra démontée et éléments internes](images/anyka-camera-redacted.png)
+![Disassembled camera and internal components](images/anyka-camera-redacted.png)
 
-![Tableau de bord — identifiants réseau masqués](images/anyka-dashboard-redacted.png)
+![Dashboard with network identifiers redacted](images/anyka-dashboard-redacted.png)
 
-![Aperçu vidéo — scène et noms de positions masqués](images/anyka-preview-redacted.png)
+![Video preview with the scene and preset names redacted](images/anyka-preview-redacted.png)
 
-![Commandes de position et fonctions audio — scène masquée](images/anyka-live-redacted.png)
+![Preset and audio controls with the scene redacted](images/anyka-live-redacted.png)
 
-![Réglages d’image de la caméra](images/anyka-image-controls.png)
-
-### Dump de la mémoire interne
-
-Le dump binaire intégral de la NOR n’est pas inclus dans ce dépôt public : il peut contenir clés d’hôte, identifiants réseau, empreintes de mots de passe, configuration propre à l’appareil et éléments logiciels propriétaires. Pour documenter complètement l’organisation sans publier ces données, voir le [plan des partitions NOR](docs/flash-layout.md) et la [description matérielle structurée](hardware/board.json). L’unité observée possède 8 MiB : MTD0 amorçage/environnement, MTD1 DTB, MTD2 noyau, MTD3 rootfs, MTD4 application, MTD5 configuration ; MTD6 est un alias couvrant toute la puce, pas de la capacité supplémentaire.
+![Camera image settings](images/anyka-image-controls.png)
 
 ## Start here
 
